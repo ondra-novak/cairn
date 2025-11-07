@@ -1,0 +1,6 @@
+[submodule "src/json"]
+	path = src/json
+	url = https://github.com/ondra-novak/json20
+[submodule "src/toolbox"]
+	path = src/toolbox
+	url = https://github.com/ondra-novak/toolbox
