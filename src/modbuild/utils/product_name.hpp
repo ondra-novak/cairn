@@ -7,7 +7,7 @@
 #include <filesystem>
 #include "module_type.hpp"
 
-inline ArgumentString product_name(ModuleReferenceType type, const std::filesystem::path &source, std::string_view ext) {
+inline ArgumentString product_name(ModuleType type, const std::filesystem::path &source, std::string_view ext) {
     auto path = path_arg(source.parent_path());
     std::hash<ArgumentString> hasher;
     auto hash = hasher(path);
@@ -16,10 +16,10 @@ inline ArgumentString product_name(ModuleReferenceType type, const std::filesyst
     ArgumentString ret = string_arg(hexbuff);
     ret.push_back('_');
     switch (type) {
-        case ModuleReferenceType::header: ret.push_back('h');
+        case ModuleType::user_header: ret.push_back('h');
                                           ret.push_back('_');
                                           break;
-        case ModuleReferenceType::system_header: ret.push_back('s');
+        case ModuleType::system_header: ret.push_back('s');
                                           ret.push_back('_');
                                           break;
         default:break;                                        

@@ -37,7 +37,7 @@ public:
     virtual ~AbstractCompiler() = default;
 
     virtual int compile(const std::filesystem::path &source_ref, 
-        ModuleReferenceType type,
+        ModuleType type,
         std::span<const ModuleMapping> modules,
         CompileResult &result) const = 0;
     

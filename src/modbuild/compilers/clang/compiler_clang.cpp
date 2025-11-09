@@ -7,7 +7,6 @@
 #include <utils/process.hpp>
 #include <utils/temp_file.hpp>
 #include <memory>
-#include <ostream>
 
 
 
@@ -38,7 +37,7 @@ std::unique_ptr<AbstractCompiler> CompilerClang::create(std::span<const Argument
 }
 
 int CompilerClang::compile(const std::filesystem::path &source_ref, 
-        ModuleReferenceType type,
+        ModuleType type,
         std::span<const ModuleMapping> modules,
         CompileResult &result) const {
     
@@ -62,7 +61,7 @@ int CompilerClang::compile(const std::filesystem::path &source_ref,
 
     switch (type) {
 
-        case ModuleReferenceType::header: {
+        case ModuleType::user_header: {
             result.interface = bmi_path/product_name(type, source_ref, "pcm");
             args.emplace_back(fmodule_header_user);
             args.emplace_back(xcpp_header);
@@ -72,7 +71,7 @@ int CompilerClang::compile(const std::filesystem::path &source_ref,
             Process p = Process::spawn_noredir(_config.program_path,_config.working_directory, args);
             return p.waitpid_status();
         }
-        case ModuleReferenceType::system_header: {
+        case ModuleType::system_header: {
             result.interface = bmi_path/product_name(type, source_ref, "pcm");
             args.emplace_back(fmodule_header_system);        
             args.emplace_back(xcpp_system_header);
@@ -82,7 +81,7 @@ int CompilerClang::compile(const std::filesystem::path &source_ref,
             Process p = Process::spawn_noredir(_config.program_path,_config.working_directory, args);
             return p.waitpid_status();
         }
-        case ModuleReferenceType::module: {
+        case ModuleType::interface: {
             result.interface = bmi_path/product_name(type, source_ref,"pcm");
             args.emplace_back(precompile_flag);
             args.emplace_back(path_arg(source_ref));
@@ -94,8 +93,6 @@ int CompilerClang::compile(const std::filesystem::path &source_ref,
             if (r) return r;
             break;
         }
-        case ModuleReferenceType::system_module:
-            throw std::runtime_error("not implemented yet");
         
         default: break;    
     }
