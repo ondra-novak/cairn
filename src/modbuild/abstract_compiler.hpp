@@ -36,6 +36,20 @@ public:
 
     virtual ~AbstractCompiler() = default;
 
+    ///Changes working directory - should be used as first
+    virtual void set_working_directory(std::filesystem::path) = 0;
+
+    ///Initialize module map
+    /** Use this before build. Some compilers can benefit of this, other not
+        @param module_interface_cpp_list list of pair: module name and path to cpp file contains interface. The compiler
+        use name to generate BMI name. 
+
+        You must initialize map before you can compile any module. 
+        This feature is used by gcc module-mapper. Gcc fails to compile module if it was not
+        properly anounced. Clang and msvc ignores this feature.
+    */
+    virtual void initialize_module_map(std::vector<std::pair<std::string, std::filesystem::path> > module_interface_cpp_list) = 0;
+
     virtual int compile(const std::filesystem::path &source_ref, 
         ModuleType type,
         std::span<const ModuleMapping> modules,
