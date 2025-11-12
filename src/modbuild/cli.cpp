@@ -28,7 +28,7 @@ Switches
 -b<dir>   specify build directory
 -C        compile only (doesn't run linker)
 -L        link only (requires compiled files in build directory)
--w        specified file is modules.json to compile (all files)
+-r        recompile whole database even if modules are not referenced
 -s        output only errors (silent)
 -d        debug mode (output everyting)
 
@@ -72,9 +72,9 @@ bool parse_cmdline(AppSettings &settings, CliReader<ArgumentString::value_type> 
             case 'c': settings.compile_commands_json = (curdir/cli.text()).lexically_normal();break;
             case 'f': settings.env_file_json = (curdir/cli.text()).lexically_normal();break;
             case 'b': settings.working_directory_path = (curdir/cli.text()).lexically_normal();break;
+            case 'r': settings.recompile = true;break;
             case 'C': settings.mode = AppSettings::compile_only;break;
             case 'L': settings.mode = AppSettings::link_only;break;
-            case 'w': settings.compile_project = true;break;
             case 's': Log::set_level(Log::Level::error);break;
             case 'd': Log::set_level(Log::Level::debug);break;            
             case 'h': settings.show_help = true;break;

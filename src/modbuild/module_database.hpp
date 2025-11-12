@@ -57,7 +57,11 @@ public:
     void import_db(json::value db);
     void clear();
 
-  
+    ModuleDatabase() = default;
+    explicit ModuleDatabase(json::value db) {import_db(std::move(db));} 
+
+
+
     PSource find(Reference ref) const;
     PSource find(std::filesystem::path file) const;
     ///Inserts src int database

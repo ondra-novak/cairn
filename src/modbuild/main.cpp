@@ -7,8 +7,10 @@
 #include "compilers/clang/factory.hpp"
 #include "compilers/msvc/factory.hpp"
 #include "utils/arguments.hpp"
+#include <json/parser.h>
 #include <filesystem>
 #include <memory>
+#include <fstream>
 
 static constexpr auto gcc_type_1 = ArgumentConstant("gcc");
 static constexpr auto gcc_type_2 = ArgumentConstant("g++");
@@ -78,7 +80,23 @@ static std::unique_ptr<AbstractCompiler> create_compiler(const AppSettings &sett
     std::filesystem::create_directories(cfg.working_directory);
     return factory(std::move(cfg));
 }
+ModuleDatabase load_database_from_file(std::istream &f) {
+    std::vector<char> data;
+    ModuleDatabase db;
+    std::copy(std::istreambuf_iterator<char>(f),
+              std::istreambuf_iterator<char>(), 
+              std::back_inserter(data));
+    json::value jdata;
+    json::parser_t p;
+    p.parse(data.begin(), data.end(), jdata);
+    return ModuleDatabase{std::move(jdata)};
+}
 
+ModuleDatabase load_database(const std::filesystem::path &path) {
+    std::ifstream f(path);
+    if (!f) return {};
+    else return load_database_from_file(f);
+}
 
 
 int tmain(int argc, ArgumentString::value_type *argv[]) {
@@ -117,7 +135,17 @@ int tmain(int argc, ArgumentString::value_type *argv[]) {
             return 1;
         }
 
-        ModuleDatabase db;
+        auto db_path = settings.working_directory_path/".db";
+
+        ModuleDatabase db = load_database(db_path);
+
+        db.update_files_state(*compiler);
+        if (!settings.env_file_json.empty()) {
+            db.rescan_directories({},*compiler, settings.env_file_json);
+        }
+        db.rescan_file(nullptr, settings.source_file_path, *compiler);
+        auto plan = db.create_compile_plan(settings.source_file_path);
+
         
 
         return 0;

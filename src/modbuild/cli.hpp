@@ -23,8 +23,8 @@ struct AppSettings {
     std::vector<ArgumentString> lib_arguments =  {};
     int threads = 1;
     Mode mode = compile_and_link;
-    bool compile_project = false;
     bool show_help = false;
+    bool recompile = false;
 
 };
 
