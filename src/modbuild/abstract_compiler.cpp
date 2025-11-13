@@ -1,15 +1,26 @@
 #include "abstract_compiler.hpp"
 #include "utils/process.hpp"
 
-int AbstractCompiler::spawn_compiler(const Config &cfg, const std::filesystem::path &workdir, std::span<const ArgumentString> arguments, std::vector<ArgumentString> *dump_cmdline)
+int AbstractCompiler::invoke(const Config &cfg, 
+    const std::filesystem::path &workdir, 
+    std::span<const ArgumentString> arguments)
 {
-    if (dump_cmdline) {
-        dump_cmdline->push_back(path_arg(cfg.program_path));
-        dump_cmdline->insert(dump_cmdline->end(), arguments.begin(), arguments.end());
-    }
-
-    if (cfg.dry_run) return 0;
     Process p = Process::spawn(cfg.program_path, workdir, arguments, true);
     return p.waitpid_status();
 
+}
+
+
+
+std::vector<ArgumentString> AbstractCompiler::prepare_args(const OriginEnv &env) {
+    std::vector<ArgumentString> out;
+    ArgumentString a;
+    for (const auto &i: env.includes) {
+        auto s = path_arg(i);
+        a.push_back('-');
+        a.push_back('I');
+        a.append(s);
+        out.push_back(a);
+    }
+    return out;        
 }

@@ -10,26 +10,13 @@
 #include <memory>
 
 
-std::vector<ArgumentString> CompilerClang::prepare_args(const OriginEnv &env) {
-    std::vector<ArgumentString> out;
-    ArgumentString a;
-    for (const auto &i: env.includes) {
-        auto s = path_arg(i);
-        a.push_back('-');
-        a.push_back('I');
-        a.append(s);
-        out.push_back(a);
-    }
-    return out;        
-}
-
 
 int CompilerClang::link(std::span<const std::filesystem::path> objects) const {
     std::vector<ArgumentString> args = _config.link_options;
     std::transform(objects.begin(), objects.end(), std::back_inserter(args), [](const auto &p){
         return path_arg(p);
     });
-    return spawn_compiler(_config, _config.working_directory, args,nullptr);
+    return invoke(_config, _config.working_directory, args);
 
 }
 
@@ -82,7 +69,7 @@ int CompilerClang::compile(const OriginEnv &env, const std::filesystem::path &so
             args.emplace_back(path_arg(source_ref));
             args.emplace_back(output_flag);
             args.emplace_back(path_arg(result.interface));
-            return spawn_compiler(_config, env.working_dir, args);
+            return invoke(_config, env.working_dir, args);
         }
         case ModuleType::system_header: {
             result.interface = get_bmi_path(type, source_ref);
@@ -92,7 +79,7 @@ int CompilerClang::compile(const OriginEnv &env, const std::filesystem::path &so
             args.emplace_back(path_arg(source_ref));
             args.emplace_back(output_flag);
             args.emplace_back(path_arg(result.interface));
-            return spawn_compiler(_config, env.working_dir, args);
+            return invoke(_config, env.working_dir, args);
         }
         case ModuleType::partition:
         case ModuleType::interface: {
@@ -103,7 +90,7 @@ int CompilerClang::compile(const OriginEnv &env, const std::filesystem::path &so
             args.emplace_back(path_arg(source_ref));
             args.emplace_back(output_flag);
             args.emplace_back(path_arg(result.interface));
-            int r =  spawn_compiler(_config, env.working_dir, args);
+            int r =  invoke(_config, env.working_dir, args);
             if (r) return r;
             args.resize(arglen);
             break;
@@ -119,7 +106,7 @@ int CompilerClang::compile(const OriginEnv &env, const std::filesystem::path &so
         args.emplace_back(path_arg(source_ref));
         args.emplace_back(output_flag);
         args.emplace_back(path_arg(result.object));
-        return  spawn_compiler(_config, env.working_dir, args, &result.compile_arguments);
+        return  invoke(_config, env.working_dir, args);
     }
 
 }

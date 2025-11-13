@@ -7,6 +7,10 @@
 class CompilerClang : public AbstractCompiler {
 public:
 
+    virtual std::string_view get_compiler_name() const override {
+        return "clang";
+    }
+
     virtual int compile(
         const OriginEnv &env,
         const std::filesystem::path &source, 
@@ -53,7 +57,6 @@ public:
 protected:
     Config _config;
     
-    static std::vector<ArgumentString> prepare_args(const OriginEnv &env) ;
   
 
     std::filesystem::path get_bmi_path(ModuleType type, std::filesystem::path source) const {

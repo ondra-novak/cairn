@@ -14,7 +14,6 @@ public:
     struct CompileResult {
         std::filesystem::path interface;
         std::filesystem::path object;
-        std::vector<ArgumentString> compile_arguments;
     };
 
     struct ModuleMapping {
@@ -27,10 +26,12 @@ public:
         std::vector<ArgumentString> compile_options;
         std::vector<ArgumentString> link_options;
         std::filesystem::path working_directory;
-        bool dry_run;
     };
 
     virtual ~AbstractCompiler() = default;
+
+
+    virtual std::string_view get_compiler_name() const = 0;
 
     ///Initialize module map
     /** Use this before build. Some compilers can benefit of this, other not
@@ -132,6 +133,9 @@ public:
         std::filesystem::create_directories(file_path.parent_path());
     }
 
-    static int spawn_compiler(const Config &cfg, const std::filesystem::path &workdir, std::span<const ArgumentString> arguments, std::vector<ArgumentString> *dump_cmdline = nullptr);
-    
+    static int invoke(const Config &cfg, 
+        const std::filesystem::path &workdir, 
+        std::span<const ArgumentString> arguments);
+
+    static std::vector<ArgumentString> prepare_args(const OriginEnv &env);
 };

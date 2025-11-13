@@ -136,7 +136,9 @@ int tmain(int argc, ArgumentString::value_type *argv[]) {
             return 1;
         }
 
-        auto db_path = settings.working_directory_path/".db";
+        std::string db_name (compiler->get_compiler_name());
+        db_name.append(".db");
+        auto db_path = settings.working_directory_path/db_name;
 
         ModuleDatabase db = load_database(db_path);
 
