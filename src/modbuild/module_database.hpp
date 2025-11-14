@@ -141,7 +141,7 @@ protected:
     ModuleIndex _moduleIndex;
     OriginMap _originMap;
     std::chrono::system_clock::time_point _modify_time; //time when database was modified
-    std::chrono::system_clock::time_point _import_time;   //time when database was imported
+    std::chrono::system_clock::time_point _import_time = std::chrono::system_clock::now();   //time when database was imported
     std::atomic<bool> _modified;     //database has been modified
 
     void collectReexports(PSource src, std::vector<CompilePlanReference> &exports) const;

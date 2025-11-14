@@ -1,4 +1,4 @@
-export module A;
+export module A; 
 
 export class Foo {
 public:

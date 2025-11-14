@@ -25,6 +25,13 @@ public:
 
     CompilerClang(Config config);
 
+    virtual bool initialize_build_system(BuildSystemConfig ) override {
+        return false;
+    }
+
+    virtual bool commit_build_system() override {
+        return false;
+    }
 
 
     virtual bool generate_compile_command(
@@ -34,7 +41,7 @@ public:
         std::vector<ArgumentString> &result) const override;
 
 
-    virtual void initialize_module_map(std::span<const ModuleMapping> ) override {}
+    virtual void initialize_module_map(std::span<const SourceDef> ) override {}
 
 
     static constexpr auto preprocess_flag = ArgumentConstant("-E");
@@ -50,6 +57,23 @@ public:
     static constexpr auto fmodule_file = ArgumentConstant("-fmodule-file=");
     static constexpr auto version_flag = ArgumentConstant("--version");
     static constexpr auto fprebuild_module_path = ArgumentConstant("-fprebuilt-module-path=");
+    static constexpr auto wno_pragma_system_header_outside_header = ArgumentConstant("-Wno-pragma-system-header-outside-header");
+    static constexpr auto wno_experimental_header_units = ArgumentConstant("-Wno-experimental-header-units");
+    static constexpr auto stdcpp=ArgumentConstant("-std=c++");
+    static constexpr auto stdcpp17=ArgumentConstant("-std=c++17"); //need to disable modules during preprocess
+
+    //preprocessor options
+    static constexpr auto preproc_D = ArgumentConstant("-D");
+    static constexpr auto preproc_U = ArgumentConstant("-U");
+    static constexpr auto preproc_I = ArgumentConstant("-I");
+    static constexpr auto preproc_define_macro = ArgumentConstant("--define-macro");
+    static constexpr auto preproc_undefine_macro = ArgumentConstant("--undefine-macro");
+    static constexpr auto preproc_include_directory = ArgumentConstant("--include-directory");
+    
+    static constexpr auto all_preproc = std::array<ArgumentStringView, 6>({
+        preproc_D, preproc_I, preproc_U, preproc_define_macro, preproc_undefine_macro, preproc_include_directory
+    });
+
 
 protected:
     Config _config;
@@ -61,7 +85,7 @@ protected:
 
     std::filesystem::path get_bmi_path(const SourceDef &src) const {
         auto n = src.name;
-        for (auto &c: n) if (c == ':') c = '_';
+        for (auto &c: n) if (c == ':') c = '-';
         std::filesystem::path fname(n);
         fname.replace_extension(".pcm");
         return _config.working_directory/"pcm"/fname;

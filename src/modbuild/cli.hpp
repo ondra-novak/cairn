@@ -21,7 +21,7 @@ struct AppSettings {
     std::vector<ArgumentString> compiler_arguments = {};
     std::vector<ArgumentString> linker_arguments = {};
     std::vector<ArgumentString> lib_arguments =  {};
-    int threads = 1;
+    unsigned int threads = 1;
     Mode mode = compile_and_link;
     bool show_help = false;
     bool recompile = false;

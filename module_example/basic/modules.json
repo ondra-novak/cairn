@@ -6,7 +6,8 @@
         "test.cpp"
     ],
     "prefixes":{
-        "": "../modA"
+        "": "../modA",
+        "mmain":"../partitions"
     },
     "work_dir":"."
 

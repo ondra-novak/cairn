@@ -2,8 +2,8 @@ module;
 #include <just_example.hpp>
 
 export module modA;
-import <just_example.hpp>
-import "../includes/just_example2.hpp"
+import <just_example.hpp>;
+import "../includes/just_example2.hpp";
 
 export namespace mymod {
 

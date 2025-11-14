@@ -13,6 +13,7 @@ public:
         std::filesystem::path file;
         std::vector<ArgumentString> arguments;
         ArgumentString command;
+        json::value original_json  = {};
     };
 
     std::unordered_map<std::filesystem::path, CCRecord> _table;

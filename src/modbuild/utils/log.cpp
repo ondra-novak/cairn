@@ -4,7 +4,7 @@
 
 static std::mutex logmx;
 
-Log::Level Log::disabled_level = Log::Level::debug;
+Log::Level Log::disabled_level = Log::Level::verbose;
 Log::Formatter Log::pre_format = [](Log::Level lev, Log::Buffer &buff) {
      using namespace std::chrono;
 /*    auto now = system_clock::now();

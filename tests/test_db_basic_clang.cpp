@@ -23,7 +23,7 @@ int main() {
     std::cout << db.export_db().to_json() << std::endl;
     auto plan = db.create_compile_plan(path);
 
-    Builder bld(1, *compiler);
+    Builder bld(1, *compiler, OriginEnv::default_env());
     CompileCommandsTable ctable;
     bld.generate_compile_commands(ctable, plan);
     std::cout << ctable.export_db().to_json() << std::endl;

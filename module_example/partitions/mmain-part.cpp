@@ -1,3 +1,3 @@
 module mmain:part;
 
-int foo() {return 42;}
+export int foo() {return 42;}

@@ -17,14 +17,10 @@ void CompileCommandsTable::load(std::filesystem::path p) {
     if (f.is_open()) {
         auto data = std::string(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
         auto jdata = json::value::from_json(data);
-        for (auto v: jdata) {
+        for (auto v: jdata) {            
             CCRecord rc;
-            rc.command = string_arg(v["command"].get());
+            rc.original_json = v;
             rc.file = v["file"].as<std::u8string>();
-            rc.directory = v["directory"].as<std::u8string>();
-            for (auto x: v["arguments"]) {
-                rc.arguments.push_back(string_arg(x.get()));                
-            }
             if (std::filesystem::exists(rc.file)) {
                 update(std::move(rc));
             }
@@ -36,6 +32,9 @@ void CompileCommandsTable::load(std::filesystem::path p) {
 json::value CompileCommandsTable::export_db() {
     return json::value(_table.begin(), _table.end(),  
         [&](const auto &rc) {
+            if (rc.second.original_json.defined()) {
+                return rc.second.original_json;
+            }
             return json::value{
                 {"command", rc.second.command},
                 {"file", rc.second.file.u8string()},

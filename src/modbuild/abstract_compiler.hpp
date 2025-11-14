@@ -15,6 +15,8 @@ public:
         ModuleType type;    //type of compiled module
         std::string name;   //name of compiled module 
         std::filesystem::path path;  //path to source file / interface file
+        bool operator==(const SourceDef &other) const = default;
+        std::size_t hash() const {return std::hash<std::string>()(name);}
     };
 
     struct CompileResult {
@@ -35,6 +37,11 @@ public:
         std::filesystem::path working_directory;
     };
 
+    struct BuildSystemConfig {
+        unsigned int threads;
+        bool keep_going;
+    };
+
     virtual ~AbstractCompiler() = default;
 
 
@@ -49,7 +56,26 @@ public:
         This feature is used by gcc module-mapper. Gcc fails to compile module if it was not
         properly anounced. Clang and msvc ignores this feature.
     */
-    virtual void initialize_module_map(std::span<const ModuleMapping> module_interface_cpp_list) = 0;
+    virtual void initialize_module_map(std::span<const SourceDef> module_interface_cpp_list) = 0;
+
+
+    ///Initializes compiler specific build system, (for example ninja, make, MSBuild, if configured)
+    /**
+     * @param config build system configuration
+     * @retval true build system is ready, following commands will be executed by the build system. You
+     * need to call commit_build_system() to tell the build system to commit all scheduled work
+     * @retval false the build system is not ready or not supported, so the caller must orchestrate
+     * the build process
+     * 
+     */
+    virtual bool initialize_build_system(BuildSystemConfig config) = 0;
+
+    ///Commit all actions scheduled after initialization
+    /**
+     * @retval true success build
+     * @retval false failure
+     */
+    virtual bool commit_build_system() = 0;
 
     ///Compile source file
     /**

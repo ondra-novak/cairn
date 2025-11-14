@@ -1,7 +1,9 @@
 import B;
 import modA;
+import mmain;
 
-main() {
+int main() {
     Foo f = create_foo();
     f.hello();
+    return 0;
 }

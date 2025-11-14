@@ -4,24 +4,43 @@
 #include "origin_env.hpp"
 #include "utils/arguments.hpp"
 #include "utils/log.hpp"
+#include <unordered_set>
 
-auto run_compile(auto fn, const ModuleDatabase::CompilePlan &item, const OriginEnv &def_origin) {        
-    const OriginEnv &env =item.sourceInfo->origin?*item.sourceInfo->origin :def_origin;
-    std::vector<AbstractCompiler::SourceDef> modmap;
-    modmap.reserve(item.references.size());
-    for (auto &x: item.references) {
-        modmap.push_back({
-            x.source->type,
-            x.name,
-            x.source->bmi_path
-        });
-    }
-    return fn(env, modmap);
+namespace {
+
+using SourceDef = AbstractCompiler::SourceDef;
+
+
+SourceDef referenceToBMISourceDef(const ModuleDatabase::CompilePlanReference &ref) {
+    return SourceDef {
+        ref.source->type,
+        ref.name,
+        ref.source->bmi_path
+    };
+}
+
+SourceDef referenceToSourceDef(const ModuleDatabase::CompilePlanReference &ref) {
+    return SourceDef {
+        ref.source->type,
+        ref.name,
+        ref.source->source_file
+    };
+}
+
+std::vector<SourceDef> createBMIReferences(const ModuleDatabase::CompilePlan &plan) {
+    std::vector<SourceDef> out;
+    out.reserve(plan.references.size());
+    for (const auto &r: plan.references)  {
+        out.push_back(referenceToBMISourceDef(r));
+    }  
+    return out; 
 }
 
 
-Builder::Builder(std::size_t threads, AbstractCompiler &compiler)
-:_compiler(compiler) 
+}
+
+Builder::Builder(std::size_t threads, AbstractCompiler &compiler, OriginEnv default_env)
+:_compiler(compiler),_default_env(std::move(default_env)) 
 {
     _thrp.start(threads);
 }
@@ -51,10 +70,10 @@ struct BuildState {
         ,stop_on_error(stop_on_error)
          {
             cnt_to_compile =0;
-            for (auto &p: plan) {
-                bool recompile = p.sourceInfo->state.recompile 
-                    || p.sourceInfo->bmi_path.empty()
-                    || !std::filesystem::exists(p.sourceInfo->bmi_path);
+            for (auto &p: this->plan) {
+                bool recompile = p.sourceInfo->state.recompile;
+                if (!p.sourceInfo->bmi_path.empty() && !std::filesystem::exists(p.sourceInfo->bmi_path)) recompile = true;
+                if (!p.sourceInfo->object_path.empty() && !std::filesystem::exists(p.sourceInfo->object_path)) recompile = true;
                 states[p.sourceInfo] = recompile?TaskState::waiting:TaskState::done;
                 cnt_to_compile += recompile?1:0;
             }
@@ -70,19 +89,23 @@ struct BuildState {
     std::promise<bool> prom;
     std::size_t cnt_to_compile;
     std::size_t cnt_compiled;
-    
-    static void spawn_tasks(std::shared_ptr<BuildState> me) {
+
+    static void start(std::shared_ptr<BuildState> me) {
         std::lock_guard _(me->mx);
+        spawn_tasks(std::move(me));
+    }
+
+    static void spawn_tasks(std::shared_ptr<BuildState> me) {
         std::size_t cnt = me->plan.size();
         bool all_done = true;
         for (std::size_t i = 0; i < cnt; ++i) {
             auto src = me->plan[i].sourceInfo;
-            auto st = me->states[src];
+            auto &st = me->states[src];
             if (st == TaskState::done) continue;
                 all_done = false;
             if (st == TaskState::in_progress) continue;            
             
-            bool can_build = false;
+            bool can_build = true;
             for(const auto &ref: me->plan[i].references) {
                 TaskState &refst = me->states[ref.source];
                 if (refst != TaskState::done) {
@@ -112,19 +135,16 @@ struct BuildState {
 
         auto &item = me->plan[index];
         AbstractCompiler::CompileResult compile_res;
-        int r = run_compile([&](const OriginEnv &env, std::span<const AbstractCompiler::SourceDef> modmap){
-            lk.unlock();
-                int r = me->cmp.compile(env, {
-                    item.sourceInfo->type,
-                    item.sourceInfo->name,
-                    item.sourceInfo->source_file}, modmap, compile_res);
-            lk.lock();
-            return r;
-
-        }, item, me->def_origin);
-        
+        const auto &env = item.sourceInfo->origin?*item.sourceInfo->origin:me->def_origin;
+        auto modmap = createBMIReferences(item);
+        lk.unlock();
+       int r = me->cmp.compile(env, {
+                item.sourceInfo->type,
+                item.sourceInfo->name,
+                item.sourceInfo->source_file}, modmap, compile_res);
+        lk.lock();
         ++me->cnt_compiled;
-        auto percent = (me->cnt_compiled+me->cnt_to_compile/2)*100/me->cnt_to_compile;
+        auto percent = (me->cnt_compiled*100+me->cnt_to_compile/2)/me->cnt_to_compile;
         if (!r) Log::verbose("{}% Compiled: {}", percent, item.sourceInfo->source_file.string());
         else Log::verbose("{}% Compile failed: {} code {}",percent,  item.sourceInfo->source_file.string(), r);
 
@@ -139,7 +159,7 @@ struct BuildState {
         item.sourceInfo->bmi_path =std::move(compile_res.interface);
         item.sourceInfo->object_path = std::move(compile_res.object);
         item.sourceInfo->state.recompile = false;
-        me->states[item.sourceInfo] = TaskState::done;
+        me->states[item.sourceInfo] = TaskState::done;        
         spawn_tasks(std::move(me));
     }
 
@@ -150,26 +170,34 @@ std::future<bool> Builder::build(std::vector<ModuleDatabase::CompilePlan> plan, 
 {
     auto state =std::make_shared<BuildState>(_thrp, _compiler, std::move(plan), stop_on_error);
     auto ret = state->prom.get_future();
-    BuildState::spawn_tasks(std::move(state));
+    BuildState::start(std::move(state));
     return ret;
 }
 
 void Builder::generate_compile_commands(CompileCommandsTable &cctable, std::vector<ModuleDatabase::CompilePlan> plan) {
     std::vector<ArgumentString> args;
-    OriginEnv default_origin = OriginEnv::default_env();
-    for (auto &c: plan) {
-        run_compile([&](const OriginEnv &env, const auto &modmap){
-            bool b;
-            args.clear();
-            b =  _compiler.generate_compile_command(env, {
-                c.sourceInfo->type, c.sourceInfo->name, c.sourceInfo->source_file
-            }, modmap, args);
-            if (b) {
-               cctable.update(cctable.record(env.working_dir, c.sourceInfo->source_file,args));        
-            }
-
-        }, c, default_origin);
+    for (auto &item: plan) {
+        const auto &env = item.sourceInfo->origin?*item.sourceInfo->origin:_default_env;
+        auto modmap = createBMIReferences(item);
+        bool b;
+        args.clear();
+        b =  _compiler.generate_compile_command(env, {
+            item.sourceInfo->type, item.sourceInfo->name, item.sourceInfo->source_file
+        }, modmap, args);
+        if (b) {
+            cctable.update(cctable.record(env.working_dir, item.sourceInfo->source_file,args));        
+        }
     }
 }
 
 
+
+std::vector<AbstractCompiler::SourceDef> Builder::create_module_mapping(const std::span<const ModuleDatabase::CompilePlan> &plan) {
+    std::unordered_set<AbstractCompiler::SourceDef, MethodHash> s;
+    for (const auto &p: plan) {
+        for (const auto &r: p.references) {
+            s.insert(referenceToSourceDef(r));
+        }
+    }
+    return {s.begin(), s.end()};
+}

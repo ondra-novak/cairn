@@ -1,6 +1,8 @@
 #include "compiler_clang.hpp"
 #include "factory.hpp"
+#include "../../utils/log.hpp"
 #include "module_type.hpp"
+#include <algorithm>
 #include <filesystem>
 
 #include <regex>
@@ -38,6 +40,12 @@ CompilerClang::CompilerClang(Config config) :_config((std::move(config))) {
     if (_version < Version("18.0")) {
         throw std::runtime_error("CLANG: version 18.0 or higher is required. Found: " + _version.to_string());
     }
+    
+    if (std::find_if(_config.compile_options.begin(), _config.compile_options.end(), [&](const auto &opt){
+        return opt.starts_with(stdcpp);
+    }) == _config.compile_options.end()) {
+        Log::warning("Missing C++ version (-std=c++xx) in command line options. This can cause misbehaviour during compilation!");
+    }
 
 }
 
@@ -54,9 +62,28 @@ std::string CompilerClang::preproces(const OriginEnv &env,const std::filesystem:
 
     auto args = prepare_args(env);
     args.insert(args.begin(), _config.compile_options.begin(), _config.compile_options.end());
+
+    args.erase(std::remove_if(args.begin(), args.end(), [&,skip = false](const ArgumentString &s) mutable {
+        if (skip) {
+            skip = false;
+            return false;
+        }
+        auto f1 = std::find(all_preproc.begin(), all_preproc.end(), s);
+        if (f1 != all_preproc.end()) {
+            skip = true;
+            return false;
+        }
+        auto f2 = std::find_if(all_preproc.begin(), all_preproc.end(), [&](const ArgumentStringView &w) {
+            return s.starts_with(w);
+        });
+        return (f2 == all_preproc.end());
+    }), args.end());
+
+    args.emplace_back(stdcpp17);
     args.emplace_back(preprocess_flag);
     args.emplace_back(path_arg(file));
-    
+
+
     Process p = Process::spawn(_config.program_path, _config.working_directory, std::move(args), false);
 
     std::string out((std::istreambuf_iterator<char>(*p.stdout_stream)),
@@ -75,14 +102,18 @@ std::vector<ArgumentString> CompilerClang::build_arguments(bool precompile_stage
     if (!precompile_stage && (source.type == ModuleType::system_header || source.type == ModuleType::user_header )) {
         return args;
     }
-    if (precompile_stage && (source.type != ModuleType::implementation && source.type != ModuleType::partition )) {
+    if (precompile_stage && (source.type == ModuleType::implementation || source.type == ModuleType::source )) {
         return args;
     }
     args = prepare_args(env);                                            
     args.insert(args.begin(), _config.compile_options.begin(), _config.compile_options.end());
 
-    args.emplace_back(fprebuild_module_path);
-    args.back().append(path_arg(_module_cache));
+    auto init_cache = [&]{
+        args.emplace_back(fprebuild_module_path);
+        args.back().append(path_arg(_module_cache));
+    };
+
+    bool disable_experimental_warning = false;
 
     for (const auto &m: modules) {
         if (m.type != ModuleType::system_header 
@@ -91,10 +122,15 @@ std::vector<ArgumentString> CompilerClang::build_arguments(bool precompile_stage
                 break;       //skip modules in cache, not need specify
             }
         ArgumentString cmd (fmodule_file);
-        cmd.append(string_arg(m.name));
-        cmd.append(inline_arg("="));
+/*        cmd.append(string_arg(m.name));
+        cmd.append(inline_arg("="));*/
         cmd.append(path_arg(m.path));
-        args.push_back(std::move(cmd));        
+        args.push_back(std::move(cmd));    
+        disable_experimental_warning = true;    
+    }
+
+    if (disable_experimental_warning) {
+        args.emplace_back(wno_experimental_header_units);
     }
 
     switch (source.type) {
@@ -110,9 +146,9 @@ std::vector<ArgumentString> CompilerClang::build_arguments(bool precompile_stage
         }
         case ModuleType::system_header: {
             result.interface = get_hdr_bmi_path(source);
-            ensure_path_exists(result.interface);
-            args.emplace_back(fmodule_header_system);        
+            args.emplace_back(wno_pragma_system_header_outside_header);
             args.emplace_back(xcpp_system_header);
+            args.emplace_back(precompile_flag);
             args.emplace_back(path_arg(source.path));
             args.emplace_back(output_flag);
             args.emplace_back(path_arg(result.interface));
@@ -120,8 +156,8 @@ std::vector<ArgumentString> CompilerClang::build_arguments(bool precompile_stage
         }
         case ModuleType::partition:
         case ModuleType::interface: if (precompile_stage) {
+            init_cache();
             result.interface = get_bmi_path(source);
-            ensure_path_exists(result.interface);
             args.emplace_back(xcpp_module);
             args.emplace_back(precompile_flag);
             args.emplace_back(path_arg(source.path));
@@ -135,7 +171,7 @@ std::vector<ArgumentString> CompilerClang::build_arguments(bool precompile_stage
 
     {
         result.object = get_obj_path(source);
-        ensure_path_exists(result.object);
+        init_cache();
         args.emplace_back(compile_flag);
         args.emplace_back(path_arg(source.path));
         args.emplace_back(output_flag);

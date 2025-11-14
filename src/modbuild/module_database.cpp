@@ -28,8 +28,8 @@ json::value ModuleDatabase::export_db() const {
     origins.reserve(_originMap.size()+1);
     json::value data(_fileIndex.begin(), _fileIndex.end(), [&](const auto &kv){
         const PSource src = kv.second;
-        std::size_t orgid = 0;
-        auto oins = orgmap.try_emplace(src->origin, origins.size());
+        std::size_t orgid = origins.size();
+        auto oins = orgmap.try_emplace(src->origin, orgid);
         if (oins.second) origins.push_back(src->origin); else orgid = oins.first->second;
 
         return json::value {
@@ -73,7 +73,7 @@ void ModuleDatabase::import_db(json::value db) {
             auto opts = v["options"];
 
             std::vector<std::filesystem::path> paths(inc.size());
-            std::vector<std::string> options(inc.size());
+            std::vector<std::string> options(opts.size());
 
             std::transform(inc.begin(), inc.end(), paths.begin(), [](const json::value &v){
                 return std::filesystem::path(v.as<std::u8string>());
@@ -109,16 +109,16 @@ void ModuleDatabase::import_db(json::value db) {
 
     for (auto item: data) {
         Source src;
-        src.name = data["name"].as<std::string>();
-        src.source_file = data["source_file"].as<std::u8string>();
-        src.object_path = data["object_path"].as<std::u8string>();
-        src.bmi_path = data["bmi_path"].as<std::u8string>();        
-        src.type = static_cast<ModuleType>(data["type"].as<int>());
-        std::size_t orgid = data["origin"].as<std::size_t>();
+        src.name = item["name"].as<std::string>();
+        src.source_file = item["source_file"].as<std::u8string>();
+        src.object_path = item["object_path"].as<std::u8string>();
+        src.bmi_path = item["bmi_path"].as<std::u8string>();        
+        src.type = static_cast<ModuleType>(item["type"].as<int>());
+        std::size_t orgid = item["origin"].as<std::size_t>();
         if (orgid < origmap.size()) src.origin = origmap[orgid];
-        auto ref = data["references"];
+        auto ref = item["references"];
         std::transform(ref.begin(), ref.end(), std::back_inserter(src.references), json2ref_a);
-        auto expr = data["exported"];
+        auto expr = item["exported"];
         std::transform(expr.begin(), expr.end(), std::back_inserter(src.exported), json2ref);
         put(std::move(src));
     }
@@ -161,7 +161,7 @@ ModuleDatabase::PSource ModuleDatabase::put(Source src) {
   _fileIndex.emplace(psrc->source_file, psrc);
   auto refiter = _moduleIndex.try_emplace(Reference{src.type, src.name}, 1, psrc);
   if (!refiter.second) {
-    refiter.first->second.push_back(std::move(psrc));
+    refiter.first->second.push_back(psrc);
   }
   if (psrc->origin) _originMap.try_emplace(psrc->origin->config_file, psrc->origin);
   set_dirty();
@@ -215,6 +215,24 @@ void ModuleDatabase::update_files_state(AbstractCompiler &compiler) {
 
     //locate all modified files    
     for(const auto &[k,f]: _fileIndex) {
+        f->state = {false,false};
+        if (f->type == ModuleType::implementation 
+            || f->type == ModuleType::partition
+            || f->type == ModuleType::source) {
+                if (f->object_path.empty()) f->state.recompile = true;
+            
+        }
+        if (f->type == ModuleType::interface 
+            || f->type == ModuleType::partition
+            || f->type == ModuleType::system_header
+            || f->type == ModuleType::user_header) {
+                if (f->bmi_path.empty()) f->state.recompile = true;
+        }
+
+        if (f->type == ModuleType::system_header) {
+             //system header cannot be checked for modification
+            continue;
+        }
         std::error_code ec;
         auto lwt = std::filesystem::last_write_time(k, ec);
         if (ec != std::error_code{}) {
@@ -222,9 +240,9 @@ void ModuleDatabase::update_files_state(AbstractCompiler &compiler) {
             to_remove.push_back(k);        
         } else {
             //recompile if modified
-            f->state.recompile = lwt > cmptm;
+            f->state.recompile = f->state.recompile || lwt > cmptm;
             //rescan if modified and not header
-            f->state.rescan = f->state.recompile && need_rescan(f->type);    
+            f->state.rescan = f->state.rescan || (f->state.recompile && need_rescan(f->type));    
         }
     }
     //remove all marked files
@@ -341,6 +359,7 @@ ModuleDatabase::Unsatisfied ModuleDatabase::rescan_file(
         orgptr = &tmpenv.value();
     }
      
+    
     
     //erase file from db
     erase(source_file);
