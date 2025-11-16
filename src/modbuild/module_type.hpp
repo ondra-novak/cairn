@@ -36,3 +36,18 @@ enum class ModuleType {
     user_header,
 };
 
+constexpr bool generates_bmi(ModuleType t) {
+    return t == ModuleType::user_header
+        || t == ModuleType::system_header
+        || t == ModuleType::partition
+        || t == ModuleType::interface;
+}
+constexpr bool generates_object(ModuleType t) {
+    return t == ModuleType::implementation
+        || t == ModuleType::source
+        || t == ModuleType::interface
+        || t == ModuleType::partition;
+}
+constexpr bool is_header_module(ModuleType t) {
+    return t == ModuleType::user_header || t == ModuleType::system_header;
+}

@@ -6,6 +6,8 @@
 #include "scanner.hpp"
 #include "utils/log.hpp"
 #include "utils/filesystem.hpp"
+#include "abstract_compiler.hpp"
+#include "compile_commands_supp.hpp"
 #include <queue>
 #include <unordered_set>
 
@@ -196,11 +198,11 @@ bool ModuleDatabase::is_dirty() const {
     return _modified.load(std::memory_order_relaxed);
 }
 
-void ModuleDatabase::clear_dirty() {
+void ModuleDatabase::clear_dirty() const {
     _modified.store(false, std::memory_order_relaxed);
 }
 
-void ModuleDatabase::set_dirty() {
+void ModuleDatabase::set_dirty() const {
     _modified.store(true, std::memory_order_relaxed);
 
 }
@@ -342,6 +344,23 @@ ModuleDatabase::Source ModuleDatabase::from_scanner(const std::filesystem::path 
     return out;
 }
 
+bool ModuleDatabase::add_file(POriginEnv origin, const std::filesystem::path &source_file, AbstractCompiler &compiler) {
+    auto f = find(source_file);
+    if (f && (f->origin == origin || (f->origin && origin && f->origin->config_file == origin->config_file))) return false;
+    if (f && !origin && f->origin) origin = f->origin;
+    if (origin == nullptr) {
+        auto mm = ModuleResolver::loadMap(source_file.parent_path());
+        auto iter = _originMap.find(mm.env.config_file);
+        if (iter != _originMap.end()) {
+            origin = iter->second;
+        } else {
+            origin = std::make_shared<OriginEnv>(mm.env);
+        }
+    }
+    rescan_file_discovery(origin, source_file, compiler);
+    return true;
+}
+
 ModuleDatabase::Unsatisfied ModuleDatabase::rescan_file(
         POriginEnv origin,
         const std::filesystem::path &source_file,
@@ -364,8 +383,7 @@ ModuleDatabase::Unsatisfied ModuleDatabase::rescan_file(
     //erase file from db
     erase(source_file);
     //run scanner
-    SourceScanner scn(compiler);
-    auto info = scn.scan_file(*orgptr, source_file);    
+    auto info = compiler.scan(*orgptr, source_file);
     Source srcinfo = from_scanner(source_file, info);    
     srcinfo.origin = origin;
     auto refs = srcinfo.references;
@@ -461,82 +479,244 @@ ModuleDatabase::Unsatisfied ModuleDatabase::rescan_directories(
     return {need.begin(), need.end()};
 }
 
-
-void ModuleDatabase::add_to_compile_plan(PSource f, std::vector<CompilePlan> &out) const {
-        CompilePlan c;
-        c.sourceInfo = f;
-        for (auto &r: c.sourceInfo->references) {
-            auto g= find(r);
-            if (g) {
-                c.references.push_back({
-                    r.alias.empty()?g->name:r.alias,
-                    g
-                });
-                collectReexports(g, c.references);
+template<typename FnRanged>
+void ModuleDatabase::collect_bmi_references(PSource from, FnRanged &&ret) const {
+    std::unordered_map<PSource, std::string_view> result;
+    std::queue<PSource> q;
+    for (const auto &r: from->references) {
+        auto f = find(r);
+        if (f) {
+            if (result.emplace(f, r.alias).second) q.push(f);
+        }
+    }
+    while (!q.empty()) {
+        auto f= std::move(q.front());
+        q.pop();
+        for (const auto &r: f->exported) {
+            auto ef = find(r);
+            if (ef) {
+                if (result.emplace(ef, std::string_view() ).second) q.push(ef);
             }
         }
-        out.push_back(std::move(c));
+    }
+    result.erase(from);
+    ret(result.begin(), result.end());    
 
 }
 
-std::vector<ModuleDatabase::CompilePlan> ModuleDatabase::create_compile_plan(const std::filesystem::path &source_file) const {    
-
-    //collect all required files transitive
-
-    std::unordered_set<PSource> all_files;
-    std::vector<CompilePlan> out;
-    auto iter = find(source_file);
-    if (!iter) return out;
-    all_files.insert(iter);
+template<typename FnRanged>
+void ModuleDatabase::transitive_closure(PSource from, FnRanged &&ret) const {
+    std::unordered_set<PSource> result;
     std::queue<PSource> q;
-    q.push(iter);
+    result.insert(from);
+    q.push(from);
     while (!q.empty()) {
-        iter = std::move(q.front());
+        auto c = std::move(q.front());
         q.pop();
-        for (auto &r: iter->references) {
-            auto fs = find_multi(r);
-            for (auto f: fs) {
-                if (all_files.insert(f).second) {
-                    q.push(std::move(f));
+        for (auto &r: c->references) {
+            auto rp = find(r);
+            if (rp) {
+                if (result.insert(rp).second) {
+                    q.push(rp);
                 }
             }
-            //include all known implementations
-            if (r.type == ModuleType::interface) {
-                auto imps = find_multi(Reference{ModuleType::implementation,r.name});
-                for (auto &i: imps) {
-                    if (all_files.insert(i).second) {
-                        q.push(std::move(i));
-                    }
+            auto impl = find_multi({ModuleType::implementation, r.name});
+            for (const auto &f: impl) {
+                if (result.insert(f).second) {
+                    q.push(f);
                 }
             }
         }
     }
-    
-    //all files collected, let's build the plan
-    for (auto &f: all_files) add_to_compile_plan(f, out);
-    return out;
+    result.erase(from);
+    ret(result.begin(), result.end());
 }
 
-std::vector<ModuleDatabase::CompilePlan> ModuleDatabase::create_recompile_plan() const
+BuildPlan<ModuleDatabase::CompileAction> ModuleDatabase::create_build_plan(
+    AbstractCompiler &compiler, const OriginEnv &env, 
+    std::span<const CompileTarget> targets,
+    bool recompile, bool build_library) const
 {
-    std::vector<CompilePlan> out;
-    for (auto &[_,f]: _fileIndex)  add_to_compile_plan(f, out);
-    return out;
+    auto getenv = [&](const PSource &src) -> const OriginEnv & {
+        return src->origin?*src->origin:env;
+    };
 
-}
+    if (build_library) throw std::runtime_error("library mode is not supported yet!");
+    BuildPlan<CompileAction> plan;
+    std::unordered_map<PSource, BuildPlan<CompileAction>::TargetID> target_ids;
+    std::queue<PSource> to_process;
 
-void ModuleDatabase::collectReexports(PSource src,
-                                      std::vector<CompilePlanReference> &exports) const {
-    for (auto &r: src->exported) {
-        auto f = find(r);
-        if (f) {
-            CompilePlanReference newref {f->name, f};
-            auto iter  = std::find(exports.begin(), exports.end(), newref);
-            if (iter == exports.end()) {
-                exports.push_back(std::move(newref));
-                collectReexports(f, exports);
+
+    auto test_for_bmi = [&](PSource s) {
+        return generates_bmi(s->type) 
+        && (s->bmi_path.empty() || !std::filesystem::exists(s->bmi_path));
+    };
+
+    std::vector<PSource> tmp;
+
+
+    //add link steps for all targets
+    for (const auto &[t, s]: targets) {
+        PSource sinfo = find(s);
+        if (sinfo) {
+            //collect all references 
+            transitive_closure(sinfo, [&](auto beg, auto end) {
+                                    tmp.insert(tmp.end(), beg, end);});
+
+            tmp.push_back(sinfo); //include self to dependencies for link step
+
+            CompileAction::LinkStep lnk{{},t};
+            for (const PSource &s: tmp) {
+                //filter only sources which generates objects
+                if (generates_object(s->type)) {
+                    lnk.first.push_back(s);
+                    //test for need recompile, if need, create targets
+                    if (s->state.recompile || s->object_path.empty() || !std::filesystem::exists(s->object_path)) {
+                        auto ref = plan.create_target({*this, compiler, getenv(s), s});
+                        target_ids.emplace(s, ref);
+                        //add to process this target
+                        to_process.push(s);
+                    }
+                }
+            }
+            //add link step target
+            auto ref = plan.create_target({*this, compiler, getenv(sinfo), std::move(lnk)});
+            //add dependencies for this target
+            for (const PSource &s: tmp) {
+                auto iter = target_ids.find(s);
+                if (iter != target_ids.end()) plan.add_dependency(ref, iter->second);
             }
         }
+    }
+
+    ///when flag recompile - recompile everything marked as recompile
+    if (recompile) {
+        for (const auto &[_,f]: _fileIndex) {
+            if (f->state.recompile) {
+                auto iter = target_ids.find(f);
+                if (iter == target_ids.end())  {
+                    auto t = plan.create_target({*this, compiler, getenv(f), f})    ;
+                    target_ids.emplace(f, t);
+                    to_process.push(f);
+                }            
+            }
+        }
+    }
+
+    //now process all created targets
+    while (!to_process.empty()) {
+        //pick first
+        auto f = std::move(to_process.front());
+        to_process.pop();
+        //find target id
+        auto tid = target_ids[f];
+        //clear temporary array
+        //tmp.clear();
+        //collect all bmis required for this target (direct and reexports)
+        collect_bmi_references(f, [&](auto beg, auto end){
+            //process all bmi
+            for (const auto &[s,a]: std::ranges::subrange(beg, end)) {
+                //find whether we already know this target
+                auto iter = target_ids.find(s);
+                //we don't. create it
+                if (iter == target_ids.end()) {
+                    //test whether this is bmi
+                    //and file marked as recompile or has empty bmi path or the file doesn't exists
+                    if (test_for_bmi(s) && (s->state.recompile 
+                            || s->bmi_path.empty() 
+                            || !std::filesystem::exists(s->bmi_path))) {
+                        //create target
+                        auto ref = plan.create_target({*this, compiler, getenv(s), s});                    
+                        target_ids.emplace(s,ref);
+                        to_process.push(s);
+                        //add to dependency
+                        plan.add_dependency(tid, ref);
+                    }
+                } else {
+                    //add to dependency
+                    plan.add_dependency(tid, iter->second);
+                }
+            }
+        });
+    }
+    return plan;
+}
+
+
+auto ModuleDatabase::CompileAction::get_references(const PSource &f) const {
+    std::vector<AbstractCompiler::SourceDef> references;
+    db.collect_bmi_references(f, [&](auto beg, auto end){
+        for (auto iter = beg; iter != end;++iter) {
+            PSource s = iter->first;
+            std::string_view alias = iter->second;
+            references.push_back({
+                s->type, alias.empty()?s->name:std::string(alias), s->bmi_path
+            });   
+        }
+    });
+    return references;
+}
+
+bool ModuleDatabase::CompileAction::operator()() const noexcept 
+{
+    try {
+        if (std::holds_alternative<PSource>(step)) {
+            const PSource &f = std::get<PSource>(step);
+            AbstractCompiler::CompileResult result;
+            int res = compiler.compile(env, {f->type, f->name, f->source_file}, get_references(f), result);
+            f->bmi_path = result.interface;
+            f->object_path = result.object;
+            db.set_dirty();
+            return res == 0;
+        } else {
+            const LinkStep  &lnk = std::get<LinkStep>(step);
+            std::vector<std::filesystem::path> objs;
+            objs.reserve(lnk.first.size());
+            for (const auto &f: lnk.first) objs.push_back(f->object_path);
+            int res = compiler.link(objs, lnk.second);
+            return res == 0;
+        }
+    } catch (std::exception &e) {
+        Log::error("EXCEPTION: {}", e.what());
+        return false;
+    }
+}
+
+
+
+
+void ModuleDatabase::CompileAction::add_to_cctable(CompileCommandsTable &cctable) const
+{
+    if (std::holds_alternative<PSource>(step)) {
+        const PSource &f = std::get<PSource>(step);
+        std::vector<ArgumentString> result;
+        compiler.generate_compile_command(env, {f->type, f->name, f->source_file}, get_references(f), result);
+        cctable.update(cctable.record(env.working_dir, f->source_file, result));
+    } 
+}
+
+template<>
+void ModuleDatabase::extract_module_mapping(const BuildPlan<CompileAction> &plan, std::vector<AbstractCompiler::SourceDef> &out) {
+    std::unordered_map<AbstractCompiler::SourceDef, std::filesystem::path, MethodHash> map;
+    for (const auto &itm: plan) {
+        if (std::holds_alternative<PSource>(itm.action.step)) {
+            const PSource &f = std::get<PSource>(itm.action.step);
+            if (generates_bmi(f->type) && !is_header_module(f->type)) {
+                map.emplace(AbstractCompiler::SourceDef{f->type, f->name, {}}, f->source_file);
+            }
+            
+            itm.action.db.collect_bmi_references(f, [&](auto beg, auto end){
+                for (const auto &[f,a]: std::ranges::subrange(beg,end)) {
+                    map.emplace(AbstractCompiler::SourceDef{
+                        f->type, a.empty()?f->name:std::string(a), {}},f->source_file);
+                }
+                
+            });
+        }
+    }
+    out.clear();
+    for (const auto &[k,v]: map)  {
+        out.push_back({k.type, k.name, v});
     }
 
 }

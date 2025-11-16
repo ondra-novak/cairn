@@ -4,12 +4,14 @@
 #include "origin_env.hpp"
 #include "utils/arguments.hpp"
 #include "utils/log.hpp"
+
 #include <unordered_set>
+
+/*
 
 namespace {
 
 using SourceDef = AbstractCompiler::SourceDef;
-
 
 SourceDef referenceToBMISourceDef(const ModuleDatabase::CompilePlanReference &ref) {
     return SourceDef {
@@ -51,7 +53,7 @@ enum class TaskState {
     waiting
 };
 
-struct BuildState {
+struct OldBuildState {
 
     
     ThreadPool &tp;
@@ -62,7 +64,7 @@ struct BuildState {
     bool error = false;
     bool stopped = false;
 
-    BuildState(ThreadPool &tp, AbstractCompiler &cmp, 
+    OldBuildState(ThreadPool &tp, AbstractCompiler &cmp, 
         std::vector<ModuleDatabase::CompilePlan> plan,
         bool stop_on_error)
         :tp(tp),cmp(cmp),plan(std::move(plan))
@@ -90,12 +92,12 @@ struct BuildState {
     std::size_t cnt_to_compile;
     std::size_t cnt_compiled;
 
-    static void start(std::shared_ptr<BuildState> me) {
+    static void start(std::shared_ptr<OldBuildState> me) {
         std::lock_guard _(me->mx);
         spawn_tasks(std::move(me));
     }
 
-    static void spawn_tasks(std::shared_ptr<BuildState> me) {
+    static void spawn_tasks(std::shared_ptr<OldBuildState> me) {
         std::size_t cnt = me->plan.size();
         bool all_done = true;
         for (std::size_t i = 0; i < cnt; ++i) {
@@ -129,7 +131,7 @@ struct BuildState {
         }
     }
 
-    static void run_build(std::shared_ptr<BuildState> me, std::size_t index) {
+    static void run_build(std::shared_ptr<OldBuildState> me, std::size_t index) {
         std::unique_lock lk(me->mx);
         if (me->stopped) return;
 
@@ -168,9 +170,9 @@ struct BuildState {
 
 std::future<bool> Builder::build(std::vector<ModuleDatabase::CompilePlan> plan, bool stop_on_error)
 {
-    auto state =std::make_shared<BuildState>(_thrp, _compiler, std::move(plan), stop_on_error);
+    auto state =std::make_shared<OldBuildState>(_thrp, _compiler, std::move(plan), stop_on_error);
     auto ret = state->prom.get_future();
-    BuildState::start(std::move(state));
+    OldBuildState::start(std::move(state));
     return ret;
 }
 
@@ -201,3 +203,12 @@ std::vector<AbstractCompiler::SourceDef> Builder::create_module_mapping(const st
     }
     return {s.begin(), s.end()};
 }
+
+
+struct BuildPlanState {
+    ThreadPool &pool;
+    std::promise<bool> result;
+    bool resolved = false;
+    bool error = false;
+};
+*/

@@ -1,5 +1,4 @@
 #pragma once
-#include "abstract_compiler.hpp"
 #include "module_type.hpp"
 #include <string>
 #include <vector>
@@ -7,8 +6,6 @@
 
 class SourceScanner {
 public:
-
-    explicit SourceScanner(AbstractCompiler &compiler): _compiler(compiler) {}
 
 
     struct Info {
@@ -20,7 +17,6 @@ public:
         std::vector<std::string> system_headers; //list of angled includes
     };
 
-    Info scan_file(const OriginEnv &env, const std::filesystem::path &path);
 
     static Info scan_string(std::string_view text);
 
@@ -28,5 +24,5 @@ protected:
 
     static Info scan_string_2(std::string_view text);
 
-    AbstractCompiler &_compiler;
+
 };

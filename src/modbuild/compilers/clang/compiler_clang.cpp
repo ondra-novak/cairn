@@ -12,6 +12,29 @@
 #include <utils/temp_file.hpp>
 #include <memory>
 
+Version CompilerClang::get_clang_version(Config &cfg) {
+    std::vector<ArgumentString> args;
+    append_arguments(args, {"--version"},{});
+    auto p = Process::spawn(cfg.program_path, cfg.working_directory, args, false);
+
+    std::string banner((std::istreambuf_iterator<char>(*p.stdout_stream)),
+                     std::istreambuf_iterator<char>());
+    if (p.waitpid_status() != 0) {
+        throw std::runtime_error("CLANG: unable to get version of compiler: " + cfg.program_path.string());
+    }
+
+    // Extract version from banner (e.g., "clang version 14.0.6")
+    std::regex version_regex(R"((\d+\.\d+(?:\.\d+)?))");
+    std::smatch match;
+    if (std::regex_search(banner, match, version_regex)) {
+        return match[1].str();
+    } else {
+        throw std::runtime_error("CLANG: unable to parse version from: " + banner);
+    }
+
+
+}
+
 CompilerClang::CompilerClang(Config config) :_config((std::move(config))) {
 
     _module_cache = _config.working_directory / "pcm";
@@ -19,23 +42,7 @@ CompilerClang::CompilerClang(Config config) :_config((std::move(config))) {
     std::filesystem::create_directories(_module_cache);
     std::filesystem::create_directories(_object_cache);
 
-    ArgumentString verflg(version_flag);
-    auto p = Process::spawn(_config.program_path, _config.working_directory, std::span<const ArgumentString>(&verflg,1), false);
-
-    std::string banner((std::istreambuf_iterator<char>(*p.stdout_stream)),
-                     std::istreambuf_iterator<char>());
-    if (p.waitpid_status() != 0) {
-        throw std::runtime_error("CLANG: unable to get version of compiler: " + _config.program_path.string());
-    }
-
-    // Extract version from banner (e.g., "clang version 14.0.6")
-    std::regex version_regex(R"((\d+\.\d+(?:\.\d+)?))");
-    std::smatch match;
-    if (std::regex_search(banner, match, version_regex)) {
-        _version = match[1].str();
-    } else {
-        throw std::runtime_error("CLANG: unable to parse version from: " + banner);
-    }
+    _version  = get_clang_version(_config);
 
     if (_version < Version("18.0")) {
         throw std::runtime_error("CLANG: version 18.0 or higher is required. Found: " + _version.to_string());
@@ -49,16 +56,22 @@ CompilerClang::CompilerClang(Config config) :_config((std::move(config))) {
 
 }
 
-int CompilerClang::link(std::span<const std::filesystem::path> objects) const {
+int CompilerClang::link(std::span<const std::filesystem::path> objects, const std::filesystem::path &target) const {
     std::vector<ArgumentString> args = _config.link_options;
     std::transform(objects.begin(), objects.end(), std::back_inserter(args), [](const auto &p){
         return path_arg(p);
     });
+    append_arguments(args, {"-o","{}"}, {path_arg(target)});
     return invoke(_config, _config.working_directory, args);
 
 }
 
-std::string CompilerClang::preproces(const OriginEnv &env,const std::filesystem::path &file) const {
+SourceScanner::Info CompilerClang::scan(const OriginEnv &env, const std::filesystem::path &file) const
+{
+    return SourceScanner::scan_string(preprocess(env, file));
+}
+
+std::string CompilerClang::preprocess(const OriginEnv &env,const std::filesystem::path &file) const {
 
     auto args = prepare_args(env);
     args.insert(args.begin(), _config.compile_options.begin(), _config.compile_options.end());
@@ -78,10 +91,7 @@ std::string CompilerClang::preproces(const OriginEnv &env,const std::filesystem:
         });
         return (f2 == all_preproc.end());
     }), args.end());
-
-    args.emplace_back(stdcpp17);
-    args.emplace_back(preprocess_flag);
-    args.emplace_back(path_arg(file));
+    append_arguments(args, {"-xc++", "-E", "{}"}, {path_arg(file)});
 
 
     Process p = Process::spawn(_config.program_path, _config.working_directory, std::move(args), false);
@@ -108,10 +118,6 @@ std::vector<ArgumentString> CompilerClang::build_arguments(bool precompile_stage
     args = prepare_args(env);                                            
     args.insert(args.begin(), _config.compile_options.begin(), _config.compile_options.end());
 
-    auto init_cache = [&]{
-        args.emplace_back(fprebuild_module_path);
-        args.back().append(path_arg(_module_cache));
-    };
 
     bool disable_experimental_warning = false;
 
@@ -121,64 +127,46 @@ std::vector<ArgumentString> CompilerClang::build_arguments(bool precompile_stage
             && m.path.parent_path() == _module_cache) {
                 break;       //skip modules in cache, not need specify
             }
-        ArgumentString cmd (fmodule_file);
-/*        cmd.append(string_arg(m.name));
-        cmd.append(inline_arg("="));*/
-        cmd.append(path_arg(m.path));
-        args.push_back(std::move(cmd));    
+        append_arguments(args, {"-fmodule-file={}"}, {path_arg(m.path)});
         disable_experimental_warning = true;    
     }
 
     if (disable_experimental_warning) {
-        args.emplace_back(wno_experimental_header_units);
+        append_arguments(args,{"-Wno-experimental-header-units"},{});
     }
 
     switch (source.type) {
 
         case ModuleType::user_header: {
             result.interface = get_hdr_bmi_path(source);
-            args.emplace_back(fmodule_header_user);
-            args.emplace_back(xcpp_header);
-            args.emplace_back(path_arg(source.path));
-            args.emplace_back(output_flag);
-            args.emplace_back(path_arg(result.interface));
+            append_arguments(args,
+                {"-fmodule-header=user", "-xc++-header", "--precompile", "{}", "-o", "{}"},
+                {path_arg(source.path), path_arg(result.interface)});
             return args;
         }
         case ModuleType::system_header: {
             result.interface = get_hdr_bmi_path(source);
-            args.emplace_back(wno_pragma_system_header_outside_header);
-            args.emplace_back(xcpp_system_header);
-            args.emplace_back(precompile_flag);
-            args.emplace_back(path_arg(source.path));
-            args.emplace_back(output_flag);
-            args.emplace_back(path_arg(result.interface));
+            append_arguments(args,
+                {"-fmodule-header=system", "-xc++-system-header", "--precompile", "{}", "-o", "{}"},
+                {path_arg(source.path), path_arg(result.interface)});
             return args;
         }
         case ModuleType::partition:
         case ModuleType::interface: if (precompile_stage) {
-            init_cache();
             result.interface = get_bmi_path(source);
-            args.emplace_back(xcpp_module);
-            args.emplace_back(precompile_flag);
-            args.emplace_back(path_arg(source.path));
-            args.emplace_back(output_flag);
-            args.emplace_back(path_arg(result.interface));
+            append_arguments(args,
+                {"-fprebuilt-module-path={}", "-xc++-module", "--precompile", "{}", "-o", "{}"},
+                {path_arg(_module_cache), path_arg(source.path), path_arg(result.interface)});
             return args;
-        }
-        
+        }       
         default: break;    
     }
 
-    {
-        result.object = get_obj_path(source);
-        init_cache();
-        args.emplace_back(compile_flag);
-        args.emplace_back(path_arg(source.path));
-        args.emplace_back(output_flag);
-        args.emplace_back(path_arg(result.object));
-        return args;
-    }
-
+    result.object = get_obj_path(source);
+    append_arguments(args,
+        {"-fprebuilt-module-path={}","-c","{}","-o","{}"},
+        {path_arg(_module_cache), path_arg(source.path), path_arg(result.object)});
+    return args;
 
 }
 

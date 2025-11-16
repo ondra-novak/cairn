@@ -4,6 +4,7 @@
 #include "utils/log.hpp"
 #include <filesystem>
 
+
 static constexpr auto compile_flag = ArgumentConstant("--compile:");
 static constexpr auto link_flag = ArgumentConstant("--link:");
 static constexpr auto lib_flag = ArgumentConstant("--lib:");
@@ -17,7 +18,7 @@ enum class Stage {
 
 const std::string_view helptext = R"help(Usage:
 
-modbuild [...switches...] <file.cpp>  <compiler> [...compiler/linker..flags...]
+modbuild [...switches...] <output1=file1.cpp> [<output2=file2.cpp>... ] <compiler> [...compiler/linker..flags...]
 
 Switches
 ========
@@ -34,9 +35,13 @@ Switches
 -s        output only errors (silent)
 -d        debug mode (output everyting)
 
-file.cpp  specifies path to file to compile. If -W is used, the
-            then it specifies pathname to modules-like json file
-            to compile.
+outputN   specifies path/name of output executable
+fileN.cpp specifies path/name of main file for this executable
+
+          you can specify multiple targets 
+          target1=file1 target2=file2 target3=file3 ....
+          there are no spaces before and after '='
+
 
 compiler  path to compiler's binary. PATH is used to search binary
 
@@ -49,7 +54,7 @@ Note these switches end with colon
 --compile:  following arguments are used only during compilation phase
 --link:     following arguments are used only during link phase
 --lib:      produces library (will not link), following arguments are
-            used for librarian
+            used for librarian. This also activates library build 
 
 Example: gcc -DSPECIAL -I/usr/local/include --compile: -O2 -march=native --link: -o example -lthread
 
@@ -62,8 +67,16 @@ bool parse_cmdline(AppSettings &settings, CliReader<ArgumentString::value_type> 
         auto p = cli.next();
         if (p.is_end) return false;
         if (p.is_text) {
-            settings.source_file_path = (curdir/p.text).lexically_normal();
-            break;
+            auto t = std::basic_string_view(p.text);
+            auto n = t.find(static_cast<ArgumentString::value_type>('='));
+            if (n == t.npos) {
+                cli.put_back();
+                break;
+            }
+            auto target = t.substr(0,n);
+            auto path = t.substr(n+1);
+            settings.targets.push_back({(curdir/target).lexically_normal(),(curdir/path).lexically_normal()});
+            continue;
         }
         if (p.is_long_sw) return false;
 

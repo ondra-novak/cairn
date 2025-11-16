@@ -105,6 +105,7 @@ void save_database(const ModuleDatabase &db, const std::filesystem::path &path) 
     f << s << std::endl;
 }
 
+
 int tmain(int argc, ArgumentString::value_type *argv[]) {
 
     try {
@@ -147,21 +148,33 @@ int tmain(int argc, ArgumentString::value_type *argv[]) {
 
         ModuleDatabase db = load_database(db_path);
 
+        POriginEnv default_env = std::make_shared<OriginEnv>(OriginEnv::default_env());
+
         db.update_files_state(*compiler);
         if (!settings.env_file_json.empty()) {
             db.rescan_directories({},*compiler, settings.env_file_json);
         }
-        db.rescan_file_discovery(nullptr, settings.source_file_path, *compiler);
-        auto plan = settings.recompile?
-            db.create_recompile_plan():
-            db.create_compile_plan(settings.source_file_path);
+        for (const auto &ts: settings.targets) {
+            db.add_file({}, ts.source, *compiler);
+        }
+
+        auto plan = db.create_build_plan(*compiler, *default_env, 
+                    settings.targets, 
+                    settings.recompile, 
+                    !settings.lib_arguments.empty());
+                
 
         auto threads = settings.threads;
         bool use_build_system = compiler->initialize_build_system({threads, settings.keep_going});
         if (use_build_system) threads = 1;
+        std::vector<AbstractCompiler::SourceDef> module_map;
+        db.extract_module_mapping(plan, module_map);
+        compiler->initialize_module_map(module_map);
+        ThreadPool tp;
+        tp.start(threads);
+        bool ret = Builder::build(tp, plan, settings.keep_going).get();
 
-
-        Builder b(settings.threads, *compiler,OriginEnv::default_env());
+/**
         compiler->initialize_module_map(b.create_module_mapping(plan));
         bool r = settings.mode == AppSettings::link_only || b.build(plan,!settings.keep_going).get();        
         int res = 2;
@@ -175,18 +188,18 @@ int tmain(int argc, ArgumentString::value_type *argv[]) {
             }
             res = compiler->link(objects);
         }
-
+*/
         if (!settings.compile_commands_json.empty()) {
             CompileCommandsTable cctable;
             cctable.load(settings.compile_commands_json);
-            b.generate_compile_commands(cctable, plan);
+            for (auto &item: plan)item.action.add_to_cctable(cctable);            
             cctable.save(settings.compile_commands_json);
         }
 
         if (db.is_dirty()) save_database(db, db_path);
 
         
-        return res;
+        return ret?0:1;
     } catch (std::exception &e) {
         Log::error("{}", e.what());
         return 1;

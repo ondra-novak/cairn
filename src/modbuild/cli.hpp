@@ -1,4 +1,5 @@
 #include "utils/arguments.hpp"
+#include "compile_target.hpp"
 #include <filesystem>
 #include <vector>
 
@@ -16,11 +17,11 @@ struct AppSettings {
     std::filesystem::path compile_commands_json = {};
     std::filesystem::path env_file_json = {};
     std::filesystem::path working_directory_path = {};
-    std::filesystem::path source_file_path = {};
     std::filesystem::path compiler_path = {};
     std::vector<ArgumentString> compiler_arguments = {};
     std::vector<ArgumentString> linker_arguments = {};
     std::vector<ArgumentString> lib_arguments =  {};
+    std::vector<CompileTarget> targets = {};
     unsigned int threads = 1;
     Mode mode = compile_and_link;
     bool show_help = false;

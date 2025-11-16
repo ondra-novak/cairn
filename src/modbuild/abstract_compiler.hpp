@@ -7,6 +7,7 @@
 #include "origin_env.hpp"
 #include "utils/arguments.hpp"
 #include "utils/which.hpp"
+#include "scanner.hpp"
 
 class AbstractCompiler {
 public:
@@ -111,19 +112,11 @@ public:
         std::span<const SourceDef> modules,
         std::vector<ArgumentString> &result) const = 0;
 
-    virtual int link(std::span<const std::filesystem::path> objects) const = 0;
+    virtual int link(std::span<const std::filesystem::path> objects, const std::filesystem::path &output) const = 0;
 
 
-    
-    ///Preproces source file
-    /**
-     * @param env environment of file's origin. Can contain additional options, such a working directory, etc
-     * @param file file to preprocess
-     * @return preprocessed file as string. If the file cannot be preprocessed, it returns empty string
-     */
-    virtual std::string preproces(
-        const OriginEnv &env,
-        const std::filesystem::path &file) const = 0;
+    virtual SourceScanner::Info scan(const OriginEnv &env, const std::filesystem::path &file) const = 0;
+
     
 
     static constexpr auto compile_flag = ArgumentConstant("--compile:");

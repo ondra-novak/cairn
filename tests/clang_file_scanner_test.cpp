@@ -38,8 +38,7 @@ int main() {
         find_in_path("clang++"), {inline_arg("-Imodule_example/include")}, {}, ".build"});
     
 
-    SourceScanner scanner(*compiler);
     std::cout << path << std::endl;
-    print_info(scanner.scan_file(OriginEnv::default_env(),path));
+    print_info(compiler->scan(OriginEnv::default_env(),path));
 
 }

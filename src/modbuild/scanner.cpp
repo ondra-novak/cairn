@@ -152,12 +152,6 @@ auto simple_tokenizer(std::string_view text) {
 
 }
 
-SourceScanner::Info SourceScanner::scan_file(const OriginEnv &env, const std::filesystem::path &path) {
-
-    std::string text = _compiler.preproces(env, path);
-    return scan_string(text);
-
-}
 
 void uniq(auto &cont) {
     if (cont.empty()) return;

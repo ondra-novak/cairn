@@ -155,94 +155,27 @@ struct CliReader {
     }
 };
 
-template<typename T>
-struct ArgumentDef {
-    char short_switch;
-    std::string_view long_switch;
-    std::variant<
-        bool (T::*)(),    //switch activate,
-        bool (T::*)(int),    //switch integer
-        bool (T::*)(std::string),    //switch string
-        bool (T::*)(ArgumentStringView),    //switch string
-        bool (T::*)(std::filesystem::path path) //path string
-        > action;
-    std::string_view name;
-    std::string_view help;
-};
+template<typename AppendableContainer>
+requires (requires(AppendableContainer c, ArgumentStringView v){{c.emplace_back(v)};})
+void append_arguments(AppendableContainer &cont, 
+    std::initializer_list<std::string_view> argtemplate, 
+    std::initializer_list<ArgumentStringView> values) {
 
-template<typename T>
-bool process_arguments(std::span<const ArgumentDef<T> > defs, T &target, CliReader<ArgumentStringView::value_type> &rd) {
+    auto viter = values.begin();
+    auto vend = values.end();
 
-    decltype(defs.begin()) itr, prev_iter = defs.begin();
-    std::string sw;
-    auto cwd = std::filesystem::current_path();
-
-    do {
-        auto item = rd.next();
-        if (item.is_end) return true;        
-        else if (item.is_short_sw) {
-            itr =std::find_if(defs.begin(), defs.end(), [&](const auto &d){return d.short_switch == item.short_sw;});
-            if (itr == defs.end()) {
-                std::cerr << "Unexpected short switch :" << static_cast<char>(item.short_sw) << std::endl;
-                return false;
-            } 
-        } else if (item.is_long_sw) {
-            sw.clear();
-            std::basic_string_view org_sw(item.long_sw);
-            std::copy(org_sw.begin(), org_sw.end(), std::back_inserter(sw));
-            itr =std::find_if(defs.begin(), defs.end(), [&](const auto &d){return d.long_switch == sw;});
-            if (itr == defs.end()) {
-                std::cerr << "Unexpected long switch :" << sw << std::endl;
-                return false;
-            } 
-        } else {
-            itr =std::find_if(prev_iter, defs.end(), [&](const auto &d){
-                return d.long_switch.empty() && d.short_switch == 0
-                    && ( std::holds_alternative<bool (T::*)(int)>(d.action)
-                        ||  std::holds_alternative<bool (T::*)(std::string)>(d.action)
-                        ||  std::holds_alternative<bool (T::*)(ArgumentStringView)>(d.action)
-                        ||  std::holds_alternative<bool (T::*)(std::filesystem::path)>(d.action));
-            });
-            if (itr == defs.end()) {
-                sw.clear();
-                std::basic_string_view org_sw(item.long_sw);
-                std::copy(org_sw.begin(), org_sw.end(), std::back_inserter(sw));
-                std::cerr << "Unexpected command line argument:" << sw << std::endl;
-                return false;
-            } 
-            prev_iter = itr+1;
-            rd.put_back();
+    for (auto a: argtemplate) {              
+        ArgumentString out;
+        while (true) {
+            auto p = std::min(a.find("{}"), a.size());
+            for (std::size_t i = 0; i < p; ++i) out.push_back(static_cast<ArgumentString::value_type>(a[i]));
+            if (p >= a.size()) break;
+            if (viter != vend) {
+                out.append(*viter);
+                ++viter;
+            }
+            a = a.substr(p+2);            
         }
-        if (rd) {
-            if (std::holds_alternative<bool (T::*)(int)>(itr->action)) {
-                auto a =std::get<bool (T::*)(int)>(itr->action);
-                if (!(target.*a)(rd.number())) return true;
-            }else if (std::holds_alternative<bool (T::*)(std::filesystem::path)>(itr->action)) {            
-                auto a=std::get<bool (T::*)(std::filesystem::path)>(itr->action);
-                if (!(target.*a)((cwd/rd.text()).lexically_normal())) return true;
-            }else if (std::holds_alternative<bool (T::*)(std::string)>(itr->action)) {            
-                auto a = std::get<bool (T::*)(std::string)>(itr->action);
-                sw.clear();
-                std::basic_string_view org_sw(rd.text());
-                std::copy(org_sw.begin(), org_sw.end(), std::back_inserter(sw));
-                if (!(target.*a)(sw)) return true;
-            }else if (std::holds_alternative<bool (T::*)(ArgumentStringView)>(itr->action)) {            
-                auto a=std::get<bool (T::*)(ArgumentStringView)>(itr->action);
-                if (!(target.*a)(rd.text())) return true;
-            }
-        } else {
-            if (std::holds_alternative<bool (T::*)()>(itr->action)) {
-                auto a = std::get<bool (T::*)()>(itr->action);
-                if (!(target.*a)()) return true;
-            } else {
-                std::cerr << "Expected extra command line argument." << std::endl;
-                return false;
-            }
-        }    
-
-    } while (true);
-
+        cont.emplace_back(std::move(out));
+    }    
 }
-
-
-

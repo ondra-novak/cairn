@@ -4,13 +4,19 @@
 #include "scanner.hpp"
 #include "utils/hash.hpp"
 #include "origin_env.hpp"
+#include "build_plan.hpp"
+#include "compile_target.hpp"
+
 #include <chrono>
 #include <json/value.h>
 #include <filesystem>
 #include <unordered_map>
 #include <vector>
+#include <variant>
 
+class AbstractCompiler;
 
+class CompileCommandsTable;
 
 class ModuleDatabase {
 public:
@@ -86,13 +92,26 @@ public:
     */
     std::vector<PSource> find_multi(Reference ref) const;
     bool is_dirty() const;
-    void clear_dirty();
-    void set_dirty();
+    void clear_dirty() const;
+    void set_dirty() const;
 
 
     ///checks whether files are modified and updates their states accordingly
     /** It also populates recompile state to ensure correct dependency */
     void update_files_state(AbstractCompiler &compiler);
+
+    ///adds new file
+    /**
+     * @param origin source origin
+     * @param source_file source file path
+     * @param compiler reference to compiler
+     * 
+     * @retval true file added or updated
+     * @retval false no change made
+     * 
+     * @note Adds file, if doesn't exist in database or is stored differently
+     */
+    bool add_file(POriginEnv origin, const std::filesystem::path &source_file, AbstractCompiler &compiler);
 
     ///Create Source from scanner informations
     static Source from_scanner(const std::filesystem::path &source_file, const SourceScanner::Info &nfo);
@@ -116,24 +135,32 @@ public:
             AbstractCompiler &compiler,
             std::filesystem::path start_directory
         );
-    ///runs discover process for added files. It creates map of directories from current files
-    void discover_new_files(AbstractCompiler &compiler);
 
+    
+    struct CompileAction {
+        const ModuleDatabase &db;
+        AbstractCompiler &compiler;
+        const OriginEnv &env;
 
-    struct CompilePlanReference {
-        std::string name;
-        PSource source;
-        bool operator==(const CompilePlanReference &) const = default;
+        using CompileStep = PSource;
+        using LinkStep = std::pair<std::vector<PSource>, std::filesystem::path>; //objects and output
+        std::variant<CompileStep, LinkStep> step;
+
+        //compile action
+        bool operator()() const noexcept;        
+        void add_to_cctable(CompileCommandsTable &cctable) const;
+        auto get_references(const PSource &f) const;
     };
 
-    struct CompilePlan {
-        PSource sourceInfo; //this file will be compiled
-        std::vector<CompilePlanReference> references;    //this files will be added as reference
-        
-    };
+    BuildPlan<CompileAction> create_build_plan(AbstractCompiler &compiler, 
+                const OriginEnv &env,
+                std::span<const CompileTarget> targets, 
+                bool recompile, bool build_library) const;
 
-    std::vector<CompilePlan> create_compile_plan(const std::filesystem::path &source_file) const;
-    std::vector<CompilePlan> create_recompile_plan() const;
+
+    template<typename VectorOfSourceDef>
+    static void extract_module_mapping(const BuildPlan<CompileAction> &a, VectorOfSourceDef &out);
+
 
 
 protected:
@@ -142,10 +169,18 @@ protected:
     OriginMap _originMap;
     std::chrono::system_clock::time_point _modify_time; //time when database was modified
     std::chrono::system_clock::time_point _import_time = std::chrono::system_clock::now();   //time when database was imported
-    std::atomic<bool> _modified;     //database has been modified
+    mutable std::atomic<bool> _modified;     //database has been modified
 
-    void collectReexports(PSource src, std::vector<CompilePlanReference> &exports) const;
-    void add_to_compile_plan(PSource f, std::vector<CompilePlan> &out) const;
+    ///create transitive clousure from source file (source is excluded)
+    /**
+     * @param from starting source file, this file is  not included
+     * @param ret result array to fill
+     */
+    template<typename FnRanged>
+    void transitive_closure(PSource from, FnRanged &&ret) const;
 
+    ///collects all bmis required to compile source "from"
+    template<typename FnRanged>
+    void collect_bmi_references(PSource from, FnRanged &&ret) const;
 
 };

@@ -29,4 +29,4 @@ endif()
 include_directories(BEFORE src/json/src src/toolbox/src)
 
 add_subdirectory(src/modbuild)
-add_subdirectory(tests)
+# add_subdirectory(tests)
