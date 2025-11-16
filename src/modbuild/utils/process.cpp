@@ -17,7 +17,7 @@
 #include <iostream>
 #include <ext/stdio_filebuf.h> // GNU extension
 #include <signal.h>
-#include <cpp.20/FixSizeVector.hpp>
+
 
 extern char **environ;
 
@@ -121,8 +121,8 @@ Process Process::spawn(const std::filesystem::path &path,
         });        
                          
 
-    FixSizeVector<char> arg_buffer(reqspace);
-    FixSizeVector<char *> pointers(args.size()+2);  //args + arg0 + NULL;
+    std::vector<char> arg_buffer(reqspace);
+    std::vector<char *> pointers(args.size()+2);  //args + arg0 + NULL;
 
     {
         char *wrt = arg_buffer.data();
