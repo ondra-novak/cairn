@@ -2,6 +2,7 @@
 #include "../../abstract_compiler.hpp"
 #include "../../utils/arguments.hpp"
 #include "../../utils/version.hpp"
+#include "factory.hpp"
 #include <filesystem>
 
 class CompilerClang : public AbstractCompiler {
@@ -42,7 +43,7 @@ public:
         std::vector<ArgumentString> &result) const override;
 
 
-    virtual void initialize_module_map(std::span<const SourceDef> ) override {}
+    virtual void initialize_module_map(std::span<const ModuleMapping> ) override {}
 
 
     static constexpr auto stdcpp=ArgumentConstant("-std=c++");
@@ -60,6 +61,7 @@ public:
     });
 
 
+    virtual SourceStatus source_status(ModuleType , const std::filesystem::path &file, std::filesystem::file_time_type tm) const override;
 protected:
     Config _config;
     std::filesystem::path _module_cache;

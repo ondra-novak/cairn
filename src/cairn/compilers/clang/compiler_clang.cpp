@@ -16,7 +16,7 @@
 Version CompilerClang::get_clang_version(Config &cfg) {
     std::vector<ArgumentString> args;
     append_arguments(args, {"--version"},{});
-    auto p = Process::spawn(cfg.program_path, cfg.working_directory, args, false);
+    auto p = Process::spawn(cfg.program_path, cfg.working_directory, args, Process::output);
 
     std::string banner((std::istreambuf_iterator<char>(*p.stdout_stream)),
                      std::istreambuf_iterator<char>());
@@ -82,7 +82,13 @@ int CompilerClang::link(std::span<const std::filesystem::path> objects, const st
 
 SourceScanner::Info CompilerClang::scan(const OriginEnv &env, const std::filesystem::path &file) const
 {
-    return SourceScanner::scan_string(preprocess(env, file));
+    auto info =  SourceScanner::scan_string(preprocess(env, file));
+    for (auto &s: info.required) {
+        if (s.type == ModuleType::user_header) {
+            s.name = (env.working_dir/s.name).lexically_normal().string();
+        }
+    }
+    return info;
 }
 
 std::string CompilerClang::preprocess(const OriginEnv &env,const std::filesystem::path &file) const {
@@ -108,7 +114,7 @@ std::string CompilerClang::preprocess(const OriginEnv &env,const std::filesystem
     append_arguments(args, {"-xc++", "-E", "{}"}, {path_arg(file)});
 
 
-    Process p = Process::spawn(_config.program_path, _config.working_directory, args, false);
+    Process p = Process::spawn(_config.program_path, _config.working_directory, args, Process::output);
 
     std::string out((std::istreambuf_iterator<char>(*p.stdout_stream)),
                      std::istreambuf_iterator<char>());
@@ -230,6 +236,12 @@ bool CompilerClang::generate_compile_command(
 
 }
 
+CompilerClang::SourceStatus CompilerClang::source_status(ModuleType t, const std::filesystem::path &file, std::filesystem::file_time_type tm) const
+{
+    //in case of clang we cannot detect a change in system header
+    if (t == ModuleType::system_header) return SourceStatus::not_modified;
+    return AbstractCompiler::source_status(t,file,tm);
+}
 
 std::unique_ptr<AbstractCompiler> create_compiler_clang(AbstractCompiler::Config cfg) {
     return std::make_unique<CompilerClang>(std::move(cfg));

@@ -19,13 +19,6 @@ json::value ModuleDatabase::export_db() const {
                         {"name",ref.name},
                     };
     };
-    auto refjson_a = [](const ReferenceAndAlias &ref) {
-                    return json::value{
-                        {"type", static_cast<int>(ref.type)},
-                        {"name",ref.name},
-                        {"alias",ref.alias.empty()?json::value():json::value(ref.alias)},
-                    };
-    };
 
     auto flt = _originMap | std::ranges::views::filter([](const auto &x){return x.second != nullptr;});    
 
@@ -49,7 +42,7 @@ json::value ModuleDatabase::export_db() const {
                         {"bmi_path",src->bmi_path.u8string()},
                         {"name",src->name},
                         {"type",static_cast<int>(src->type)},
-                        {"references",json::value(src->references.begin(), src->references.end(),refjson_a)},
+                        {"references",json::value(src->references.begin(), src->references.end(),refjson)},
                         {"exported", json::value(src->exported.begin(), src->exported.end(), refjson)},
                     };
 
@@ -77,13 +70,6 @@ void ModuleDatabase::import_db(json::value db) {
                 };
     };
 
-    auto json2ref_a =  [&](const json::value &val) {
-                return ReferenceAndAlias{{
-                    static_cast<ModuleType>(val["type"].as<int>()),
-                    val["name"].as<std::string>()
-                }, val["alias"].as<std::string>()
-                };
-    };
     
 
     bool d =is_dirty();
@@ -118,7 +104,7 @@ void ModuleDatabase::import_db(json::value db) {
             src.type = static_cast<ModuleType>(item["type"].as<int>());
             src.origin = org;
             auto ref = item["references"];
-            std::transform(ref.begin(), ref.end(), std::back_inserter(src.references), json2ref_a);
+            std::transform(ref.begin(), ref.end(), std::back_inserter(src.references), json2ref);
             auto expr = item["exported"];
             std::transform(expr.begin(), expr.end(), std::back_inserter(src.exported), json2ref);
             put(std::move(src));
@@ -211,38 +197,42 @@ void ModuleDatabase::set_dirty() const {
 void ModuleDatabase::update_files_state(AbstractCompiler &compiler) {
     std::vector<std::filesystem::path> to_remove;
     auto cmptm = std::chrono::clock_cast<std::filesystem::file_time_type::clock>(_modify_time);
+    
 
 
     //locate all modified files    
     for(const auto &[k,f]: _fileIndex) {
         f->state = {false,false};
-        if (f->type == ModuleType::implementation 
-            || f->type == ModuleType::partition
-            || f->type == ModuleType::source) {
-                if (f->object_path.empty()) f->state.recompile = true;
-            
+        auto acmptm = cmptm;
+        if (generates_object(f->type)) {
+            if (f->object_path.empty()) f->state.recompile = true;
+            else {
+                std::error_code ec;
+                acmptm = std::filesystem::last_write_time(f->object_path, ec);
+                if (ec != std::error_code{}) f->state.recompile = true;                
+            }
         }
-        if (f->type == ModuleType::interface 
-            || f->type == ModuleType::partition
-            || f->type == ModuleType::system_header
-            || f->type == ModuleType::user_header) {
-                if (f->bmi_path.empty()) f->state.recompile = true;
+        if (generates_bmi(f->type)) {
+            if (f->bmi_path.empty()) f->state.recompile = true;        
+            else {
+                std::error_code ec;
+                acmptm = std::filesystem::last_write_time(f->bmi_path, ec);
+                if (ec != std::error_code{}) f->state.recompile = true;                
+            }
         }
+        if (acmptm > cmptm) acmptm = cmptm;
 
-        if (f->type == ModuleType::system_header) {
-             //system header cannot be checked for modification
-            continue;
-        }
-        std::error_code ec;
-        auto lwt = std::filesystem::last_write_time(k, ec);
-        if (ec != std::error_code{}) {
-            //fail to retrieve time - remove this file
-            to_remove.push_back(k);        
-        } else {
-            //recompile if modified
-            f->state.recompile = f->state.recompile || lwt > cmptm;
-            //rescan if modified and not header
-            f->state.rescan = f->state.rescan || (f->state.recompile && !is_header_module(f->type));    
+        auto st = compiler.source_status(f->type, k, acmptm);
+        switch (st) {
+            case AbstractCompiler::SourceStatus::not_exist: 
+                to_remove.push_back(k); 
+                break;
+            case AbstractCompiler::SourceStatus::modified:
+                f->state.recompile = true;
+                if (!is_header_module(f->type)) f->state.rescan = true;
+                break;
+            default:
+                break;
         }
     }
     //remove all marked files
@@ -319,24 +309,18 @@ void ModuleDatabase::update_files_state(AbstractCompiler &compiler) {
 ModuleDatabase::Source ModuleDatabase::from_scanner(const std::filesystem::path &source_file,
                                     const SourceScanner::Info &nfo) {
   
-    auto reftype = [](std::string_view name) {
-        return name.find(':') != name.npos?ModuleType::partition:ModuleType::interface;
-    };
 
     Source out;
     out.name = nfo.name;
     out.type = nfo.type;
     for (const auto &r: nfo.required) {
-        out.references.push_back(ReferenceAndAlias{{reftype(r), r},{}});
-    }
-    for (const auto &r: nfo.exported) {
-        out.exported.push_back(ReferenceAndAlias{{reftype(r), r},{}});
-    }
-    for (const auto &r: nfo.system_headers) {
-        out.references.push_back(ReferenceAndAlias{{ModuleType::system_header, r},r});
-    }
-    for (const auto &r: nfo.user_headers) {
-        out.references.push_back(ReferenceAndAlias{{ModuleType::user_header, (source_file.parent_path()/r).lexically_normal()},r});
+        if (r.type == ModuleType::system_header) {
+            out.references.push_back(Reference{r.type, r.name});
+        } else if (r.type == ModuleType::user_header) {
+            out.references.push_back(Reference{r.type, r.name});
+        } else {
+            out.references.push_back(Reference{r.type, r.name});
+        }
     }
     out.source_file = source_file;
     return out;
@@ -386,10 +370,11 @@ ModuleDatabase::Unsatisfied ModuleDatabase::rescan_file(
     //put new registration
     put(std::move(srcinfo));
 
+
     //register header references
     for (auto &r: refs) {
-        if (r.type == ModuleType::system_header || r.type == ModuleType::user_header) {
-            put(Source{r.name, r.type, r.name, origin});            
+        if (is_header_module(r.type)) {
+            put(Source{r.name, r.type, r.name, origin});
         } else {
             //check reference 
             auto fs = find(r)   ;
@@ -477,12 +462,12 @@ ModuleDatabase::Unsatisfied ModuleDatabase::rescan_directories(
 
 template<typename FnRanged>
 void ModuleDatabase::collect_bmi_references(PSource from, FnRanged &&ret) const {
-    std::unordered_map<PSource, std::string_view> result;
+    std::unordered_set<PSource> result;
     std::queue<PSource> q;
     for (const auto &r: from->references) {
         auto f = find(r);
         if (f) {
-            if (result.emplace(f, r.alias).second) q.push(f);
+            if (result.emplace(f).second) q.push(f);
         }
     }
     while (!q.empty()) {
@@ -491,7 +476,7 @@ void ModuleDatabase::collect_bmi_references(PSource from, FnRanged &&ret) const 
         for (const auto &r: f->exported) {
             auto ef = find(r);
             if (ef) {
-                if (result.emplace(ef, std::string_view() ).second) q.push(ef);
+                if (result.emplace(ef ).second) q.push(ef);
             }
         }
     }
@@ -547,12 +532,6 @@ BuildPlan<ModuleDatabase::CompileAction> ModuleDatabase::create_build_plan(
     BuildPlan<CompileAction> plan;
     std::unordered_map<PSource, BuildPlan<CompileAction>::TargetID> target_ids;
     std::queue<PSource> to_process;
-
-
-    auto test_for_bmi = [&](PSource s) {
-        return generates_bmi(s->type) 
-        && (s->bmi_path.empty() || !std::filesystem::exists(s->bmi_path));
-    };
 
     std::vector<PSource> tmp;
 
@@ -617,14 +596,14 @@ BuildPlan<ModuleDatabase::CompileAction> ModuleDatabase::create_build_plan(
         //collect all bmis required for this target (direct and reexports)
         collect_bmi_references(f, [&](auto beg, auto end){
             //process all bmi
-            for (const auto &[s,a]: std::ranges::subrange(beg, end)) {
+            for (const auto &s: std::ranges::subrange(beg, end)) {
                 //find whether we already know this target
                 auto iter = target_ids.find(s);
                 //we don't. create it
                 if (iter == target_ids.end()) {
                     //test whether this is bmi
                     //and file marked as recompile or has empty bmi path or the file doesn't exists
-                    if (test_for_bmi(s) && (s->state.recompile 
+                    if (generates_bmi(s->type) && (s->state.recompile 
                             || s->bmi_path.empty() 
                             || !std::filesystem::exists(s->bmi_path))) {
                         //create target
@@ -646,13 +625,12 @@ BuildPlan<ModuleDatabase::CompileAction> ModuleDatabase::create_build_plan(
 
 
 auto ModuleDatabase::CompileAction::get_references(const PSource &f) const {
-    std::vector<AbstractCompiler::SourceDef> references;
+    std::vector<SourceDef> references;
     db.collect_bmi_references(f, [&](auto beg, auto end){
         for (auto iter = beg; iter != end;++iter) {
-            PSource s = iter->first;
-            std::string_view alias = iter->second;
+            PSource s = *iter;
             references.push_back({
-                s->type, alias.empty()?s->name:std::string(alias), s->bmi_path
+                s->type, s->name, s->bmi_path
             });   
         }
     });
@@ -698,27 +676,28 @@ void ModuleDatabase::CompileAction::add_to_cctable(CompileCommandsTable &cctable
 }
 
 template<>
-void ModuleDatabase::extract_module_mapping(const BuildPlan<CompileAction> &plan, std::vector<AbstractCompiler::SourceDef> &out) {
-    std::unordered_map<AbstractCompiler::SourceDef, std::filesystem::path, MethodHash> map;
+void ModuleDatabase::extract_module_mapping(const BuildPlan<CompileAction> &plan, std::vector<AbstractCompiler::ModuleMapping> &out) {
+    out.clear();
+    std::unordered_set<Reference, MethodHash> processed;
     for (const auto &itm: plan) {
         if (std::holds_alternative<PSource>(itm.action.step)) {
-            const PSource &f = std::get<PSource>(itm.action.step);
+            const PSource &f = std::get<PSource>(itm.action.step);            
             if (generates_bmi(f->type) && !is_header_module(f->type)) {
-                map.emplace(AbstractCompiler::SourceDef{f->type, f->name, {}}, f->source_file);
+                if (processed.insert({f->type, f->name}).second) {
+                    out.push_back({SourceDef{f->type, f->name, f->source_file}, 
+                        f->origin?f->origin->working_dir:std::filesystem::path()});
+                }
             }
             
             itm.action.db.collect_bmi_references(f, [&](auto beg, auto end){
-                for (const auto &[f,a]: std::ranges::subrange(beg,end)) {
-                    map.emplace(AbstractCompiler::SourceDef{
-                        f->type, a.empty()?f->name:std::string(a), {}},f->source_file);
+                for (const auto &f: std::ranges::subrange(beg,end)) {
+                    if (processed.insert({f->type, f->name}).second) {
+                        out.push_back({SourceDef{f->type, f->name, f->source_file}, 
+                            f->origin?f->origin->working_dir:std::filesystem::path()});                        
+                    }                
                 }
-                
             });
         }
-    }
-    out.clear();
-    for (const auto &[k,v]: map)  {
-        out.push_back({k.type, k.name, v});
     }
 
 }

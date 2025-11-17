@@ -37,12 +37,6 @@ public:
         bool recompile = true;         ///<this file needs to be recompiled
     };
 
-    struct ReferenceAndAlias: Reference {
-        std::string alias;  //uses by user header and contains how header appear in source file
-        constexpr bool operator==(const Reference &other) const {
-            return Reference::operator==(other);
-        }
-    };
 
 
     struct Source {
@@ -50,7 +44,7 @@ public:
         ModuleType type = {};
         std::string name = {};
         POriginEnv origin = {};
-        std::vector<ReferenceAndAlias> references = {};
+        std::vector<Reference> references = {};
         std::vector<Reference> exported = {};
         std::filesystem::path object_path = {};
         std::filesystem::path bmi_path = {};

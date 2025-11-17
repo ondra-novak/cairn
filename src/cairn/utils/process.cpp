@@ -7,6 +7,7 @@
 #include <numeric>
 #include <spawn.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/wait.h>
 #include <cerrno>
 #include <cstring>
@@ -21,15 +22,20 @@
 
 extern char **environ;
 
-
-void Process::close_streams() {
-    if (stdin_stream) {
-        stdin_stream->flush();
-        stdin_stream.reset();
-    }
-    stdout_stream.reset();
-    child_stdin_buf.reset();
-    child_stdout_buf.reset();
+Process::Process(int pid, int fdstdin, int fdstdout, int fdstderr)
+    :pid(pid) {
+        if (fdstdin>=0) {
+            child_stdin_buf.emplace(fdstdin, true);
+            stdin_stream.emplace(&child_stdin_buf.value());
+        }
+        if (fdstdout>=0) {
+            child_stdout_buf.emplace(fdstdout, true);
+            stdout_stream.emplace(&child_stdout_buf.value());
+        }
+        if (fdstderr>=0) {
+            child_stderr_buf.emplace(fdstderr, true);
+            stderr_stream.emplace(&child_stderr_buf.value());
+        }
 }
 
 int Process::waitpid_status() {
@@ -78,33 +84,74 @@ static int posix_spawn_verbose (pid_t * __pid,
     return posix_spawn(__pid,__path,__file_actions,__attrp, __argv,__envp);
 
 }
+
+class FD {
+public:
+    FD (int fd = -1):_fd(fd) {};
+    FD(FD &&other):_fd(other._fd) {other._fd = -1;}
+    FD &operator=(FD &&other){
+        if (this != &other) {
+            close();
+            _fd = other._fd;
+            other._fd = -1;            
+        }
+        return *this;
+    }
+    operator int() const {return _fd;}
+    void close() {
+        if (_fd != -1) ::close(_fd);
+    }
+    ~FD() {close();}
+    int release() {
+        int r =_fd;
+        _fd = -1;
+        return r;
+    }
+
+    
+protected:
+    int _fd = -1;
+};
+
+struct Pipe {
+    FD read;
+    FD write;
+    static Pipe create() {
+        int p[2];
+        if (::pipe2(p, O_CLOEXEC) == -1) throw std::system_error(errno, std::system_category(), "Unable to open pipe");
+        return {p[0],p[1]};
+    }
+};
+
     
 Process Process::spawn(const std::filesystem::path &path, 
         const std::filesystem::path &workdir,
         const std::span<const ArgumentString> &args, 
-        bool no_streams) {
+        StreamFlags streams) {
             
-    int in_pipe[2];   // parent writes -> child stdin
-    int out_pipe[2];  // child writes -> parent stdout
+    std::optional<Pipe> pstdin;
+    std::optional<Pipe> pstdout;
+    std::optional<Pipe> pstderr;
 
     posix_spawn_file_actions_t actions;
     posix_spawn_file_actions_init(&actions);
 
-    if (!no_streams) {
-
-        if (::pipe(in_pipe) == -1 || ::pipe(out_pipe) == -1) {
-            throw std::runtime_error(std::string("pipe failed: ") + std::strerror(errno));
-        }
-
-
-        // Redirect stdin/stdout
-        posix_spawn_file_actions_adddup2(&actions, in_pipe[0], STDIN_FILENO);
-        posix_spawn_file_actions_adddup2(&actions, out_pipe[1], STDOUT_FILENO);
-
-        // Close unused ends in child
-        posix_spawn_file_actions_addclose(&actions, in_pipe[1]);
-        posix_spawn_file_actions_addclose(&actions, out_pipe[0]);
+    if (streams & input) {
+        pstdin = Pipe::create();
+        posix_spawn_file_actions_adddup2(&actions, pstdin->read, STDIN_FILENO);
+        posix_spawn_file_actions_addclose(&actions, pstdin->read);
     }
+    if (streams & output) {
+        pstdout = Pipe::create();
+        posix_spawn_file_actions_adddup2(&actions, pstdout->write, STDOUT_FILENO);
+        posix_spawn_file_actions_addclose(&actions, pstdout->write);
+    }
+    if (streams & error) {
+        pstderr = Pipe::create();
+        posix_spawn_file_actions_adddup2(&actions, pstderr->write, STDERR_FILENO);
+        posix_spawn_file_actions_addclose(&actions, pstderr->write);
+    }
+
 
     auto cd = std::filesystem::current_path();
     auto cd_ret = std::unique_ptr<std::filesystem::path, decltype([](auto *x){
@@ -147,32 +194,14 @@ Process Process::spawn(const std::filesystem::path &path,
                             environ);
 
     posix_spawn_file_actions_destroy(&actions);
-    if (!no_streams) {
-        // Parent closes ends not used
-        ::close(in_pipe[0]);
-        ::close(out_pipe[1]);
-    }
 
     if (rc != 0) {
-        if (!no_streams)  {
-            ::close(in_pipe[1]);
-            ::close(out_pipe[0]);
-            throw std::runtime_error(std::string("posix_spawn failed: ") + std::strerror(rc));
-        }
+        throw std::runtime_error(std::string("posix_spawn failed: ") + std::strerror(rc));
     }
 
-    Process p;
-    p.pid = child_pid;
-
-    if (!no_streams) {
-
-        // Wrap pipes into streams
-        p.child_stdout_buf = std::make_unique<fd_streambuf>(out_pipe[0], true);
-        p.stdout_stream = std::make_unique<std::istream>(p.child_stdout_buf.get());
-
-        p.child_stdin_buf = std::make_unique<fd_streambuf>(in_pipe[1],true);
-        p.stdin_stream = std::make_unique<std::ostream>(p.child_stdin_buf.get());
-    }
-
-    return p;
+    return Process (child_pid,
+        pstdin?pstdin->write.release():-1,
+        pstdout?pstdout->read.release():-1,
+        pstderr?pstderr->read.release():-1    
+    );
 }

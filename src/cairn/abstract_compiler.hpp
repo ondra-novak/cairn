@@ -8,27 +8,19 @@
 #include "utils/arguments.hpp"
 #include "utils/which.hpp"
 #include "scanner.hpp"
+#include "source_def.hpp"
 
 class AbstractCompiler {
 public:
-
-    struct SourceDef {
-        ModuleType type;    //type of compiled module
-        std::string name;   //name of compiled module 
-        std::filesystem::path path;  //path to source file / interface file
-        bool operator==(const SourceDef &other) const = default;
-        std::size_t hash() const {return std::hash<std::string>()(name);}
-    };
+    
 
     struct CompileResult {
         std::filesystem::path interface;
         std::filesystem::path object;
     };
 
-    struct ModuleMapping {
-        ModuleType type;    //type of module (we need this to know whether it is header or standard module)
-        std::string logical_name;   //logical module name
-        std::filesystem::path interface;    //path to interface (bmi, pcm, gcm, etc)
+    struct ModuleMapping: SourceDef {
+        std::filesystem::path work_dir;    //contains copy of origin of the module
     };
 
     struct Config {
@@ -57,7 +49,7 @@ public:
         This feature is used by gcc module-mapper. Gcc fails to compile module if it was not
         properly anounced. Clang and msvc ignores this feature.
     */
-    virtual void initialize_module_map(std::span<const SourceDef> module_interface_cpp_list) = 0;
+    virtual void initialize_module_map(std::span<const ModuleMapping> module_interface_cpp_list) = 0;
 
 
     ///Initializes compiler specific build system, (for example ninja, make, MSBuild, if configured)
@@ -117,7 +109,21 @@ public:
 
     virtual SourceScanner::Info scan(const OriginEnv &env, const std::filesystem::path &file) const = 0;
 
-    
+    enum class SourceStatus {
+        not_modified,
+        modified,
+        not_exist
+    };
+
+    virtual SourceStatus source_status(ModuleType , const std::filesystem::path &file, std::filesystem::file_time_type tm) const {
+        std::error_code ec;
+        auto lwt = std::filesystem::last_write_time(file, ec);
+        if (ec != std::error_code{}) return SourceStatus::not_exist;
+        if (lwt > tm) return SourceStatus::modified;
+        return SourceStatus::not_modified;
+
+
+    }
 
     static constexpr auto compile_flag = ArgumentConstant("--compile:");
     static constexpr auto link_flag = ArgumentConstant("--link:");
@@ -132,6 +138,7 @@ public:
         std::span<const ArgumentString> arguments);
 
     static std::vector<ArgumentString> prepare_args(const OriginEnv &env);
+
 
     static std::filesystem::path intermediate_file( const SourceDef &src, std::string_view ext);
     static void dump_failed_cmdline(const Config &cfg, const std::filesystem::path &workdir, std::span<const ArgumentString> cmdline);

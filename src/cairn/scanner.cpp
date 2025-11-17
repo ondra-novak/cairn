@@ -153,18 +153,10 @@ auto simple_tokenizer(std::string_view text) {
 }
 
 
-void uniq(auto &cont) {
-    if (cont.empty()) return;
-    std::sort(cont.begin(), cont.end());
-    auto b = cont.begin();    
-    auto bb = b;
-    ++bb;
-    auto e =std::remove_if(bb, cont.end(), [&](const auto &v){
-        if (*b == v) return true;
-        ++b;
-        return false;
-    });
-    cont.erase(e, cont.end());
+void uniq(auto &) {
+/*
+//TODO
+*/
 }
 
 SourceScanner::Info SourceScanner::scan_string(const std::string_view text) {
@@ -172,8 +164,6 @@ SourceScanner::Info SourceScanner::scan_string(const std::string_view text) {
     auto r = scan_string_2(text);
     uniq(r.exported);
     uniq(r.required);
-    uniq(r.system_headers);
-    uniq(r.user_headers);
     return r;
 
 }
@@ -228,12 +218,12 @@ SourceScanner::Info SourceScanner::scan_string_2(const std::string_view text) {
                 if (s.text == "import") {
                     s = tkn(true);
                     if (s.type == TokenType::keyword)  { 
-                        nfo.required.push_back(std::string(s.text));
+                        nfo.required.push_back({ModuleType::interface,std::string(s.text)});
                         cont = false;
                     } else if (s.type == TokenType::string) {
-                        nfo.user_headers.push_back(std::string(s.text));
+                        nfo.required.push_back({ModuleType::user_header, std::string(s.text)});
                     } else  if (s.type == TokenType::angled_include) {
-                        nfo.system_headers.push_back(std::string(s.text));
+                        nfo.required.push_back({ModuleType::system_header, std::string(s.text)});
                     }
                 }
             }
@@ -257,15 +247,15 @@ SourceScanner::Info SourceScanner::scan_string_2(const std::string_view text) {
                 s = tkn(true);
                 if (s.type == TokenType::keyword) {
                     auto n = handle_partition(nfo.name, s.text);
-                    nfo.required.push_back(std::move(n));
+                    nfo.required.push_back({is_paritition(n)?ModuleType::partition:ModuleType::interface, std::move(n)});
                     if (has_export) {
                         nfo.exported.push_back(nfo.required.back());
                         has_export = false;  
                     }                 
                 } else if (s.type == TokenType::string) {
-                    nfo.user_headers.push_back(std::string(s.text));
+                    nfo.required.push_back({ModuleType::user_header, std::string(s.text)});
                 } else  if (s.type == TokenType::angled_include) {
-                    nfo.system_headers.push_back(std::string(s.text));
+                    nfo.required.push_back({ModuleType::system_header, std::string(s.text)});
                 }                
             }
         }

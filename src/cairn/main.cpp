@@ -167,28 +167,13 @@ int tmain(int argc, ArgumentString::value_type *argv[]) {
         auto threads = settings.threads;
         bool use_build_system = compiler->initialize_build_system({threads, settings.keep_going});
         if (use_build_system) threads = 1;
-        std::vector<AbstractCompiler::SourceDef> module_map;
+        std::vector<AbstractCompiler::ModuleMapping> module_map;
         db.extract_module_mapping(plan, module_map);
         compiler->initialize_module_map(module_map);
         ThreadPool tp;
         tp.start(threads);
         bool ret = Builder::build(tp, plan, settings.keep_going).get();
 
-/**
-        compiler->initialize_module_map(b.create_module_mapping(plan));
-        bool r = settings.mode == AppSettings::link_only || b.build(plan,!settings.keep_going).get();        
-        int res = 2;
-        if (settings.keep_going || r) {
-            if (settings.mode == AppSettings::compile_only) return 0;
-            if (settings.recompile) plan = db.create_compile_plan(settings.source_file_path);
-            std::vector<std::filesystem::path> objects;
-            for (auto &p: plan) {
-                auto &obj = p.sourceInfo->object_path;
-                if (!obj.empty()) objects.push_back(obj);
-            }
-            res = compiler->link(objects);
-        }
-*/
         if (!settings.compile_commands_json.empty()) {
             CompileCommandsTable cctable;
             cctable.load(settings.compile_commands_json);

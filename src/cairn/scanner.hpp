@@ -7,14 +7,17 @@
 class SourceScanner {
 public:
 
+    struct Reference {
+        ModuleType type;
+        std::string name;
+    };
+
 
     struct Info {
         std::string name;     //logical name of this module  (FQN for partition)
         ModuleType type = ModuleType::source;
-        std::vector<std::string> required;  //list of logical names of required modules (partitions are FQN)
-        std::vector<std::string> exported; //list of logical names of exported modules (must be also included as required)
-        std::vector<std::string> user_headers; //list of includes 
-        std::vector<std::string> system_headers; //list of angled includes
+        std::vector<Reference> required;  //list of logical names of required modules (partitions are FQN)
+        std::vector<Reference> exported; //list of logical names of exported modules (must be also included as required)
     };
 
 

@@ -12,7 +12,7 @@ int AbstractCompiler::invoke(const Config &cfg,
     const std::filesystem::path &workdir, 
     std::span<const ArgumentString> arguments)
 {
-    Process p = Process::spawn(cfg.program_path, workdir, arguments, true);
+    Process p = Process::spawn(cfg.program_path, workdir, arguments, Process::no_streams);
     return p.waitpid_status();
 
 }
@@ -34,10 +34,14 @@ std::vector<ArgumentString> AbstractCompiler::prepare_args(const OriginEnv &env)
     ArgumentString a;
     for (const auto &i: env.includes) {
         auto s = path_arg(i);
+        a.clear();
         a.push_back('-');
         a.push_back('I');
         a.append(s);
         out.push_back(a);
+    }
+    for (const auto &o: env.options) {
+        out.push_back(string_arg(o));
     }
     return out;        
 }
