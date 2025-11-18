@@ -151,7 +151,7 @@ int tmain(int argc, ArgumentString::value_type *argv[]) {
 
         db.update_files_state(*compiler);
         if (!settings.env_file_json.empty()) {
-            db.rescan_directories({},*compiler, settings.env_file_json);
+            db.add_origin(settings.env_file_json, *compiler);
         }
         for (const auto &ts: settings.targets) {
             db.add_file( ts.source, *compiler);

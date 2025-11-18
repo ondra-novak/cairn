@@ -27,6 +27,7 @@ public:
         ModuleType type;
         std::string name;   //user header contains absolute path
         bool operator==(const Reference &other) const  = default;
+        std::strong_ordering operator<=>(const Reference &other) const  = default;
 
         std::size_t hash() const {
             std::hash<std::string> hasher;
@@ -114,6 +115,11 @@ public:
 
     using Unsatisfied = std::vector<Reference>;
 
+    std::pair<POriginEnv,bool> add_origin_no_discovery(const std::filesystem::path &origin_path, AbstractCompiler &compiler, Unsatisfied &missing);
+    void run_discovery(Unsatisfied &missing_ordered, AbstractCompiler &compiler);
+    POriginEnv add_origin(const std::filesystem::path &origin_path, AbstractCompiler &compiler);
+    void rescan_origin(POriginEnv origin);
+
     ///Rescan simple file
     /**
      * @param origin file's origin. Can be null, if file is inline (command line specified)
@@ -123,14 +129,6 @@ public:
     Unsatisfied rescan_file(POriginEnv origin, const std::filesystem::path &source_file,
             AbstractCompiler &compiler);
 
-    ///rescan file, discover all modules by reading modules.json
-    Unsatisfied rescan_file_discovery(POriginEnv origin, const std::filesystem::path &source_file,
-            AbstractCompiler &compiler);
-
-    Unsatisfied rescan_directories(std::span<const Reference> unsatisfied, 
-            AbstractCompiler &compiler,
-            std::filesystem::path start_directory
-        );
 
     
     struct CompileAction {

@@ -77,8 +77,8 @@ ModuleResolver::Result process_json(const std::filesystem::path &json_file, cons
     }
     auto prefixes = js["prefixes"];
     if (prefixes.type() == json::type::object) {
-        for (auto pfx: prefixes) {
-            ModuleResolver::ModulePrefixMap mp;
+        for (const auto &pfx: prefixes) {
+            ModuleMapItem mp;
             mp.prefix = pfx.key();
             if (pfx.type() == json::type::string) {
                 mp.paths.push_back((directory/pfx.as<std::u8string_view>()).lexically_normal());
@@ -91,7 +91,7 @@ ModuleResolver::Result process_json(const std::filesystem::path &json_file, cons
                 }
 
             }
-            result.mapping.push_back(std::move(mp));
+            result.env.maps.push_back(std::move(mp));
         }        
     }
     auto includes = js["includes"];
