@@ -145,17 +145,20 @@ int tmain(int argc, ArgumentString::value_type *argv[]) {
         db_name.append(".db");
         auto db_path = settings.working_directory_path/db_name;
 
-        ModuleDatabase db = load_database(db_path);
+        auto db = settings.drop_database?ModuleDatabase():load_database(db_path);
 
         POriginEnv default_env = std::make_shared<OriginEnv>(OriginEnv::default_env());
 
-        db.update_files_state(*compiler);
+        db.check_for_modifications(*compiler);
         if (!settings.env_file_json.empty()) {
             db.add_origin(settings.env_file_json, *compiler);
         }
         for (const auto &ts: settings.targets) {
             db.add_file( ts.source, *compiler);
         }
+
+        if (settings.recompile) db.recompile_all();
+        else db.check_for_recompile();
 
         auto plan = db.create_build_plan(*compiler, *default_env, 
                     settings.targets, 

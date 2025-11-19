@@ -228,96 +228,64 @@ void ModuleDatabase::set_dirty() const {
 }
 
 
-void ModuleDatabase::update_files_state(AbstractCompiler &compiler) {
-    std::vector<std::filesystem::path> to_remove;
+
+
+void ModuleDatabase::check_for_modifications(AbstractCompiler &compiler) {
+
     auto cmptm = std::chrono::clock_cast<std::filesystem::file_time_type::clock>(_modify_time);
-    
 
-
-    //locate all modified files    
-    for(const auto &[k,f]: _fileIndex) {
-        f->state = {false,false};
-        auto acmptm = cmptm;
-        if (generates_object(f->type)) {
-            if (f->object_path.empty()) f->state.recompile = true;
-            else {
-                std::error_code ec;
-                acmptm = std::filesystem::last_write_time(f->object_path, ec);
-                if (ec != std::error_code{}) f->state.recompile = true;                
-            }
-        }
-        if (generates_bmi(f->type)) {
-            if (f->bmi_path.empty()) f->state.recompile = true;        
-            else {
-                std::error_code ec;
-                acmptm = std::filesystem::last_write_time(f->bmi_path, ec);
-                if (ec != std::error_code{}) f->state.recompile = true;                
-            }
-        }
-        if (acmptm > cmptm) acmptm = cmptm;
-
-        auto st = compiler.source_status(f->type, k, acmptm);
-        switch (st) {
-            case AbstractCompiler::SourceStatus::not_exist: 
-                to_remove.push_back(k); 
-                break;
-            case AbstractCompiler::SourceStatus::modified:
-                f->state.recompile = true;
-                if (!is_header_module(f->type)) f->state.rescan = true;
-                break;
-            default:
-                break;
+    // check all origins - modified origins will be removed including their files
+    std::vector<std::filesystem::path> to_remove;
+    for (const auto &[p, org] : _originMap) {
+        if (ModuleResolver::detect_change(*org, cmptm)) {
+            to_remove.push_back(p);
         }
     }
-    //remove all marked files
-    for (const auto &x: to_remove) erase(x);    
-
-    //paths to rescan
-    std::vector<std::filesystem::path> rescan_path;
-    //new files to rescan
-    std::vector<std::pair<POriginEnv, std::filesystem::path> > new_files;
-    //list of files to rescan (existing)
-    std::vector<PSource> rescan_existing;
-
-    //find changes in origins
-    for (const auto &[_,org]: _originMap) {
-        if (org && ModuleResolver::detect_change(*org, cmptm)) {
-            rescan_path.push_back(org->config_file);
-        }
-    }
-    //rescan all scheduled directories
-    for (auto &p:rescan_path) {
-        _originMap.erase(p);
-        add_origin(p, compiler);
-    }
-
+    for (const auto &p: to_remove) _originMap.erase(p);
     to_remove.clear();
 
-    //mark all files outside current origin map
-    for (auto &x: _fileIndex) {
-        auto iter =_originMap.find(x.second->origin->config_file);
-        if (iter == _originMap.end() || iter->second != x.second->origin) {
-            to_remove.push_back(x.first);
-        }
-    }
-    for (auto &x: _fileIndex) {
-        if (!x.second->state.rescan) {
-            //check for reference of remaining files
-            for (auto &r: x.second->references) {
-                if (find(r) == nullptr) {
-                    x.second->state.rescan = true;
-                    x.second->state.recompile = true;
-                    //this file needs rescan
-                    break;
-                }
+    //collect all missing references
+    std::vector<Reference> missing;
+
+
+    std::vector<PSource> rescan;
+
+    // check all files of removed origins
+    //also check, whether files has been removed
+    //because they need to be rescaned, it is better to remove them from the database all together
+    for (const auto &[p, f] : _fileIndex) {
+        auto iter = _originMap.find(f->origin->config_file);
+        if (iter == _originMap.end()) {
+            rescan.push_back(f);
+        } else {
+            auto st = compiler.source_status(f->type, p, cmptm);    
+            if (st != AbstractCompiler::SourceStatus::not_modified) {
+                rescan.push_back(f);
             }
         }
     }
 
-    //remove all marked files
-    for (const auto &x: to_remove) erase(x);    
+    for (const auto &f: rescan) {
+        if (!is_header_module(f->type)) {
+            missing = merge_references(std::move(missing), rescan_file(f->origin, f->source_file, compiler));
+        } else {
+            f->state.recompile = true;
+        }
+    }
 
+    for (const auto &[p, f] : _fileIndex) {
+        for (auto &r: f->references) {
+            if (find(r) == nullptr) {
+                auto iter = std::lower_bound(missing.begin(), missing.end(), r);
+                if (iter == missing.end()) missing.push_back(r);
+                else if (*iter != r) missing.insert(iter, r);
+            }
+        }
+    }
+    run_discovery(missing, compiler);
+}
 
+void ModuleDatabase::check_for_recompile() {
     //spread recompile flag to other files (by reference)
     //modified?
     bool mod = true;
@@ -327,15 +295,13 @@ void ModuleDatabase::update_files_state(AbstractCompiler &compiler) {
         mod = false;
         //process all files
         for(const auto &[_,f]: _fileIndex) {
-            //if there is still file for rescaning
-            if (f->state.rescan) {
-                //schedule it
-                rescan_existing.push_back(f);                
-                mod = true;
-            }
             //spread recompile flag
             if (!f->state.recompile) {
-                for (const auto &r: f->references) {
+            //check whether targets exist
+                if ((generates_bmi(f->type) && f->bmi_path.empty()) || (generates_object(f->type) && f->object_path.empty())) {
+                    f->state.recompile = true;
+                    mod = true;
+                } else  for (const auto &r: f->references) {
                     auto rf = find(r);
                     if (rf && rf->state.recompile) { 
                         f->state.recompile = true;
@@ -345,17 +311,25 @@ void ModuleDatabase::update_files_state(AbstractCompiler &compiler) {
                 }
             }
         }
-        //rescan all scheduled files
-        for (auto r: rescan_existing) {
-            Unsatisfied missing = rescan_file(r->origin, r->source_file, compiler);
-            run_discovery(missing,compiler);
-        }
-        //clear scheduled
-        rescan_existing.clear();
-        //repeat while modified
     }
 }
 
+void ModuleDatabase:: recompile_all() {
+    for (const auto &[_,f]: _fileIndex) {
+        f->state.recompile = true;
+    }
+}
+
+ModuleDatabase::Unsatisfied ModuleDatabase::merge_references(Unsatisfied a1, Unsatisfied a2) {    
+    Unsatisfied out;
+    if (a1.empty()) out = std::move(a1);
+    else if (a2.empty()) out = std::move(a2);
+    else {
+        out.reserve(a1.size()+a2.size());
+        std::set_union(a1.begin(), a1.end(), a2.begin(), a2.end(), std::back_inserter(out));
+    }
+    return out;
+}
 
 ModuleDatabase::Source ModuleDatabase::from_scanner(const std::filesystem::path &source_file,
                                     const SourceScanner::Info &nfo) {
@@ -381,6 +355,7 @@ std::pair<POriginEnv,bool> ModuleDatabase::add_origin_no_discovery(const std::fi
     
 
     ModuleResolver::Result mres;
+    bool loaded = false;
     //attempt to find origin to this path
     //in database
     auto iter =  _originMap.find(origin_path);
@@ -388,6 +363,7 @@ std::pair<POriginEnv,bool> ModuleDatabase::add_origin_no_discovery(const std::fi
         //indirecty
         mres = ModuleResolver::loadMap(origin_path);
         iter = _originMap.find(mres.env.config_file);       
+        loaded = true;
     }
 
     if (iter == _originMap.end()) {
@@ -397,35 +373,27 @@ std::pair<POriginEnv,bool> ModuleDatabase::add_origin_no_discovery(const std::fi
         _originMap.emplace(env->config_file, env);
         //load allo files
         for (auto &x: mres.files) {
-            //if file is found
-            auto f = find(x);                    
-            if (f) {
-                //reassign new origin
-                f->origin = env;
-                f->state.recompile = true;
-                f->state.rescan = !is_header_module(f->type);
-                //database is dirty
-                set_dirty();                        
-            } else {
-                //rescan this file and find unknown references
-                auto rmis = rescan_file(env, x, compiler);
-                //add these references
-                for (auto &x: rmis) {
-                    auto iter = std::lower_bound(missing.begin(), missing.end(), x);
-                    if (iter == missing.end() || *iter != x) {
-                        missing.insert(iter, std::move(x));
-                    }
-                }
-            }
+            //rescan this file and find unknown references
+            missing = merge_references(std::move(missing),
+                                 rescan_file(env, x, compiler));
         }
         return {env, true};
     }  else {
-        return {iter->second, false};
-    }
-    
-    
+        POriginEnv o = iter->second;
+        if (!loaded) {
+            mres = ModuleResolver::loadMap(origin_path);
+        }
+        for (const auto &f: mres.files) {
+            if (!find(f)) {
+                missing = merge_references(missing, rescan_file(o, f, compiler));
+            }
+        }
 
+
+        return {o, false};
+    }
 }
+
 
 void ModuleDatabase::run_discovery(Unsatisfied &missing_ordered, AbstractCompiler &compiler) {
     std::queue<std::filesystem::path> to_explore;
@@ -452,7 +420,7 @@ void ModuleDatabase::run_discovery(Unsatisfied &missing_ordered, AbstractCompile
 
         if (to_explore.empty() || missing_ordered.empty()) break;
         //adds files to database, but can extend dependencies
-        add_origin_no_discovery(to_explore.front(), compiler, missing_ordered);
+         add_origin_no_discovery(to_explore.front(), compiler, missing_ordered);
         to_explore.pop();
     }
 }
@@ -498,6 +466,7 @@ ModuleDatabase::Unsatisfied ModuleDatabase::rescan_file(
     auto info = compiler.scan(*orgptr, source_file);
     Source srcinfo = from_scanner(source_file, info);    
     srcinfo.origin = origin;
+    srcinfo.state.recompile = true;
     auto refs = srcinfo.references;
     //put new registration
     put(std::move(srcinfo));
@@ -510,7 +479,7 @@ ModuleDatabase::Unsatisfied ModuleDatabase::rescan_file(
         } else {
             //check reference 
             auto fs = find(r)   ;
-            if (!fs || fs->state.rescan)  {
+            if (!fs)  {
                 unsatisfied.push_back(std::move(r));
             }
         }

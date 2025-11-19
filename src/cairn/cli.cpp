@@ -36,8 +36,8 @@ Switches
 -C        compile only (doesn't run linker)
 -L        link only (requires compiled files in build directory)
 -k        keep going
--r        recompile whole database even if modules are not referenced
--y        dry-run don't compile (but can generate compile_commans.json)
+-r        recompile all related files
+-R        drop database, rescan and recompile
 -s        output only errors (silent)
 -d        debug mode (output everyting)
 
@@ -113,8 +113,9 @@ bool parse_cmdline(AppSettings &settings, CliReader<ArgumentString::value_type> 
             case 'f': settings.env_file_json = (curdir/cli.text()).lexically_normal();break;
             case 'b': settings.working_directory_path = (curdir/cli.text()).lexically_normal();break;
             case 'r': settings.recompile = true;break;
+            case 'R': settings.drop_database = true;break;
             case 'C': settings.mode = AppSettings::compile_only;break;
-            case 'L': settings.mode = AppSettings::link_only;break;
+            case 'L': settings.mode = AppSettings::link_only;break;            
             case 's': Log::set_level(Log::Level::error);break;
             case 'd': Log::set_level(Log::Level::debug);break;            
             case 'h': settings.show_help = true;break;

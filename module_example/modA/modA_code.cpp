@@ -7,7 +7,7 @@ import "../includes/just_example2.hpp";
 
 export namespace mymod {
 
-    int fact(int c) {
+    int fact(int c) { 
         if (c < 2) return 1;
         return c * fact(c-1);
     }

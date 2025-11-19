@@ -36,8 +36,8 @@ public:
     };
 
     struct State {
-        bool rescan = false;            ///<this file needs to be rescanned              
-        bool recompile = true;         ///<this file needs to be recompiled
+        bool recompile = false;         ///<this file needs to be recompiled
+        bool rescan = false;            ///<this file must be rescaned
     };
 
 
@@ -155,6 +155,9 @@ public:
     template<typename VectorOfSourceDef>
     static void extract_module_mapping(const BuildPlan<CompileAction> &a, VectorOfSourceDef &out);
 
+    void check_for_modifications(AbstractCompiler &compiler);
+    void check_for_recompile();
+    void recompile_all();
 
 
 protected:
@@ -176,7 +179,8 @@ protected:
     ///collects all bmis required to compile source "from"
     template<typename FnRanged>
     void collect_bmi_references(PSource from, FnRanged &&ret) const;
-
-
+    
+    static Unsatisfied merge_references(Unsatisfied a1, Unsatisfied a2);
+    
 
 };

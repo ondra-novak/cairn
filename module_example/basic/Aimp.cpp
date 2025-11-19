@@ -2,5 +2,5 @@ module A;
 import <iostream>;
 
 void Foo::hello() {
-    std::cout << "hello world!";
+    std::cout << "hello world!"; 
 }
