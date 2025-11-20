@@ -29,6 +29,7 @@ struct AppSettings {
     bool recompile = false;
     bool keep_going = false;
     bool drop_database = false;
+    bool list = false;
 
 };
 

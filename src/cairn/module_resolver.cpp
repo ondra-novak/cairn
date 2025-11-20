@@ -9,7 +9,6 @@
 #include "utils/hash.hpp"
 #include "utils/log.hpp"
 #include "utils/filesystem.hpp"
-#include "utils/fkyaml.hpp"
 
 
 std::string_view ModuleResolver::modules_json = "modules.json";

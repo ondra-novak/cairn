@@ -2,6 +2,7 @@
 #include "builder.hpp"
 #include "cli.hpp"
 #include "module_database.hpp"
+#include "module_type.hpp"
 #include "origin_env.hpp"
 #include "utils/log.hpp"
 #include "compilers/gcc/factory.hpp"
@@ -142,6 +143,35 @@ int run_just_scan(AbstractCompiler &compiler, const std::filesystem::path &file)
     return 0;
 }
 
+static void list_modules(const std::vector<AbstractCompiler::ModuleMapping>  &map) {
+    auto filter = [&](auto fn) -> std::vector<std::string_view> {
+        std::vector<std::string_view> out;
+        for (const auto &x: map) if (fn(x.type)) out.push_back(x.name);
+        std::sort(out.begin(), out.end());
+        return out;
+    };
+
+    auto modules = filter([](ModuleType t){return !is_header_module(t);});
+    auto system_headers = filter([](ModuleType t){return t == ModuleType::system_header;});
+    auto user_headers = filter([](ModuleType t){return t == ModuleType::user_header;});
+
+    auto print_list = [] (const auto &x) {
+        if (x.empty()) std::cout << "[]\n"; else {
+            std::cout << "\n";
+            for (const auto &y:x) std::cout << " - " << y << "\n";
+        }
+    };
+
+    std::cout << "---\n";
+    std::cout << "modules:";
+    print_list(modules);
+    std::cout << "system_headers:";
+    print_list(system_headers);
+    std::cout << "user_headers:";
+    print_list(user_headers);
+
+}
+
 int tmain(int argc, ArgumentString::value_type *argv[]) {
 
     try {
@@ -198,7 +228,7 @@ int tmain(int argc, ArgumentString::value_type *argv[]) {
             db.add_file( ts.source, *compiler);
         }
 
-        if (settings.recompile) db.recompile_all();
+        if (settings.recompile || settings.list) db.recompile_all();
         else db.check_for_recompile();
 
         auto plan = db.create_build_plan(*compiler, *default_env, 
@@ -206,12 +236,18 @@ int tmain(int argc, ArgumentString::value_type *argv[]) {
                     settings.recompile, 
                     !settings.lib_arguments.empty());
                 
+        std::vector<AbstractCompiler::ModuleMapping> module_map;
+        if (settings.list) {
+            db.extract_module_mapping(plan, module_map);
+            list_modules(module_map);
+            return 0;
+        }
+
 
         auto threads = settings.threads;
         compiler->prepare_for_build();
         bool use_build_system = compiler->initialize_build_system({threads, settings.keep_going});
         if (use_build_system) threads = 1;
-        std::vector<AbstractCompiler::ModuleMapping> module_map;
         db.extract_module_mapping(plan, module_map);
         compiler->initialize_module_map(module_map);
         ThreadPool tp;

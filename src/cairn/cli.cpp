@@ -4,7 +4,6 @@
 #include "utils/log.hpp"
 #include "version.hpp"
 #include <filesystem>
-#include <sstream>
 
 
 static constexpr auto compile_flag = ArgumentConstant("--compile:");
@@ -40,6 +39,7 @@ Switches
 -R        drop database, rescan and recompile
 -s        output only errors (silent)
 -d        debug mode (output everyting)
+-l --list don't compile, just output list of all referenced modules and headers
 
 outputN   specifies path/name of output executable
 fileN.cpp specifies path/name of main file for this executable
@@ -114,8 +114,12 @@ bool parse_cmdline(AppSettings &settings, CliReader<ArgumentString::value_type> 
             if (ArgumentStringView(p.long_sw) == ArgumentConstant("scan") ) {
                 settings.scan_file = (curdir/cli.text()).lexically_normal();
                 break;
+            } else if (ArgumentStringView(p.long_sw) == ArgumentConstant("list")) {
+                settings.list = true;                
+                continue;
+            } else {
+                return false;
             }
-            return false;
         }
 
         switch (p.short_sw) {
@@ -133,6 +137,7 @@ bool parse_cmdline(AppSettings &settings, CliReader<ArgumentString::value_type> 
             case 'd': Log::set_level(Log::Level::debug);break;            
             case 'h': settings.show_help = true;break;
             case 'k': settings.keep_going = true;break;
+            case 'l': settings.list = true;break;
         }
     }
     {
