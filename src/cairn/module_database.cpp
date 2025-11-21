@@ -1,5 +1,4 @@
 #include "module_database.hpp"
-#include "json/value.h"
 #include <atomic>
 #include "module_resolver.hpp"
 #include "module_type.hpp"
@@ -14,7 +13,6 @@
 #include "utils/serialization_rules.hpp" // IWYU pragma: keep.
 #include <ostream>
 #include <queue>
-#include <string_view>
 #include <unordered_set>
 #include <ranges>
 

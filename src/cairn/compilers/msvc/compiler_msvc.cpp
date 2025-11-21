@@ -1,10 +1,12 @@
+#include "factory.hpp"
+
+#ifdef _WIN32
 #include "compiler_msvc.hpp"
 #include "../../utils/log.hpp"
 #include "../../utils/utf_8.hpp"
-#include "factory.hpp"
 #include "../../utils/process.hpp"
 #include "../../utils/serializer.hpp"
-#include "../../utils/serialization_rules.hpp"
+#include "../../utils/serialization_rules.hpp" // IWYU pragma: keep.
 #include <future>
 
 #include <stdexcept>
@@ -295,7 +297,7 @@ SystemEnvironment CompilerMSVC::capture_environment(std::string_view install_pat
 //    auto callArg = std::format(L"call \"{}\" {} && set", vcvarsall.wstring(), string_arg(arch));
 
     std::vector<ArgumentString> args;
-    append_arguments(args, {"/C", "call","{}","{}","&&","set"}, {vcvarsall.wstring(), string_arg(arch)});
+    append_arguments(args, {"/C", "call","{}","{}","&&","set"}, {path_arg(vcvarsall), string_arg(arch)});
 
     auto proc = Process::spawn("cmd.exe", std::filesystem::current_path(), args, Process::output);
     SystemEnvironment env;
@@ -373,9 +375,6 @@ std::string CompilerMSVC::map_module_name(const std::string_view &name) {
 }
 
 
-std::unique_ptr<AbstractCompiler> create_compiler_msvc( AbstractCompiler::Config config) {
-    return std::make_unique<CompilerMSVC>(std::move(config));
-}
 
 int CompilerMSVC::invoke(const std::filesystem::path &workdir, 
     std::span<const ArgumentString> arguments) const
@@ -396,3 +395,14 @@ CompilerMSVC::SourceStatus CompilerMSVC::source_status(ModuleType t, const std::
     if (t == ModuleType::system_header) return SourceStatus::not_modified;
     return AbstractCompiler::source_status(t,file,tm);
 }
+
+std::unique_ptr<AbstractCompiler> create_compiler_msvc( AbstractCompiler::Config config) {
+    return std::make_unique<CompilerMSVC>(std::move(config));
+}
+
+#else 
+std::unique_ptr<AbstractCompiler> create_compiler_msvc( AbstractCompiler::Config ) {
+    throw std::runtime_error("Unsupported on this platform");
+}
+
+#endif

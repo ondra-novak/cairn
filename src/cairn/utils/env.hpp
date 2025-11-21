@@ -25,8 +25,8 @@ public:
     static SystemEnvironment current();
     static SystemEnvironment parse(std::string_view data);
 
-    CharType **posix_format(Buffer &buff);
-    native_string to_windows_format();
+    CharType **posix_format(Buffer &buff) const;
+    native_string to_windows_format() const;
 
     template<typename Me, typename Arch>
     static void serialize(Me &me, Arch &arch) {

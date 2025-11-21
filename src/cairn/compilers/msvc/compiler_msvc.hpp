@@ -1,10 +1,10 @@
 #pragma once
+#ifdef _WIN32
 #include "../../abstract_compiler.hpp"
 #include "../../utils/arguments.hpp"
 #include "../../utils/env.hpp"
 #include "../../utils/thread_pool.hpp"
 #include <vector>
-#include <array>
 
 class CompilerMSVC: public AbstractCompiler {
 public:
@@ -86,3 +86,4 @@ protected:
         std::span<const ArgumentString> arguments) const;
 
 };
+#endif

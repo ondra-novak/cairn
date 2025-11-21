@@ -89,7 +89,7 @@ SystemEnvironment SystemEnvironment::parse(std::string_view data)
     return env;
 }
 
-SystemEnvironment::CharType **SystemEnvironment::posix_format(Buffer &buff)
+SystemEnvironment::CharType **SystemEnvironment::posix_format(Buffer &buff) const
 {   
     //creates array of pointers to "key=value" strings in buff
     buff.pointers.clear ();
@@ -112,7 +112,7 @@ SystemEnvironment::CharType **SystemEnvironment::posix_format(Buffer &buff)
     return buff.pointers.data();
 }
 
-SystemEnvironment::native_string SystemEnvironment::to_windows_format()
+SystemEnvironment::native_string SystemEnvironment::to_windows_format() const
 {
     //creates double-null-terminated block of "key=value" strings
     native_string result;

@@ -25,12 +25,13 @@ static constexpr auto clang_type_1 = ArgumentConstant("clang");
 static constexpr auto clang_type_2 = ArgumentConstant("clang++");
 static constexpr auto clang_type_3 = ArgumentConstant("llvm");
 static constexpr std::array<ArgumentStringView,3> clang_types = {clang_type_1, clang_type_2, clang_type_3};
+#ifdef _WIN32
 static constexpr auto msvc_type_1 = ArgumentConstant("msvc");
 static constexpr auto msvc_type_2 = ArgumentConstant("msc");
 static constexpr auto msvc_type_3 = ArgumentConstant("cl");
 static constexpr auto msvc_type_4 = ArgumentConstant("cl.exe");
 static constexpr std::array<ArgumentStringView,4> msvc_types = {msvc_type_1, msvc_type_2, msvc_type_3, msvc_type_4};
-
+#endif
 
 static std::unique_ptr<AbstractCompiler> create_compiler(const AppSettings &settings) {
     auto contains = [](ArgumentStringView what, const auto &where) {
@@ -44,8 +45,10 @@ static std::unique_ptr<AbstractCompiler> create_compiler(const AppSettings &sett
             factory = &create_compiler_gcc;
         } else if (contains(settings.compiler_type, clang_types)) {
             factory = &create_compiler_clang;
+#ifdef _WIN3
         } else if (contains(settings.compiler_type, msvc_types)) {
             factory = &create_compiler_msvc;
+#endif            
         } else {
             return {};
         }
@@ -55,9 +58,12 @@ static std::unique_ptr<AbstractCompiler> create_compiler(const AppSettings &sett
         std::transform(exec_name.begin(), exec_name.end(), exec_name.begin(),
                [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
 
+#ifdef _WIN3
         if (exec_name.rfind("cl.exe") != exec_name.npos) {
             factory = &create_compiler_msvc;            
-        } else if (exec_name.rfind("clang") != exec_name.npos) {
+        } else
+#endif  
+        if (exec_name.rfind("clang") != exec_name.npos) {
             factory = &create_compiler_clang;            
         } else if (exec_name.rfind("gcc") != exec_name.npos || exec_name.rfind("g++") != exec_name.npos) {
             factory = &create_compiler_gcc;

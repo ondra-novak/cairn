@@ -7,7 +7,7 @@
 #include <windows.h>
 #else
 #include <unistd.h>
-#endif;
+#endif
 
 
 OutputTempFile::~OutputTempFile() {
