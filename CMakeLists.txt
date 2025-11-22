@@ -36,4 +36,4 @@ endif()
 include_directories(BEFORE src/json/src)
 
 add_subdirectory(src/cairn)
-# add_subdirectory(tests)
+

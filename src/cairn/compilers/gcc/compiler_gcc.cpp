@@ -2,7 +2,8 @@
 #include "compile_commands_supp.hpp"
 #include "factory.hpp"
 #include "../../utils/log.hpp"
-#include "../../utils/temp_file.hpp"
+#include "../../utils/utf_8.hpp"
+#include <fstream>
 #include <memory>
 #include <future>
 #include <utils/arguments.hpp>
@@ -178,7 +179,7 @@ void CompilerGcc::initialize_module_map(std::span<const ModuleMapping> def)
             case ModuleType::user_header: {
                 auto [name, path] = separate_header_ref(x.name);                
                 add_record(x, "./", name);
-                add_record(x, x.work_dir.string(), "/", name);
+                add_record(x, (x.work_dir/"xxx").parent_path().string(), "/", name); //ensure, that x.work_dir is dir
             }break;
             case ModuleType::system_header: {                
                 auto [name, path] = separate_header_ref(x.name);                
@@ -196,20 +197,21 @@ void CompilerGcc::initialize_module_map(std::span<const ModuleMapping> def)
 
 int CompilerGcc::link(std::span<const std::filesystem::path> objects, const std::filesystem::path & target) const
 {
-    OutputTempFile tmpf;
-    std::ostream &f = tmpf.create();
+  auto lstname = _object_cache/intermediate_file({ModuleType::source, "list", target}, ".lst");
+    std::ofstream lst(lstname, std::ios::trunc|std::ios::out);
+    if (!lst.is_open()) {
+        Log::error("Failed to create list file: {}", lstname.string());
+    }
     for (const auto &s: objects) {
          Log::debug("Link object {}", [&]{
             return s.string();
          });
-         auto str = s.u8string();
-         f.write(reinterpret_cast<const char *>(str.data()), str.size());
-         f.put('\n');
+         lst << s.u8string() << "\n";
     }
-    auto tmppath = tmpf.commit();
+    lst.close();
 
     std::vector<ArgumentString> args = _config.link_options;
-    append_arguments(args, {"@{}","-o","{}"}, {path_arg(tmppath), path_arg(target)});
+    append_arguments(args, {"@{}","-o","{}"}, {path_arg(lstname), path_arg(target)});
     int r =  invoke(_config, _config.working_directory, args);
     if (r) {
         dump_failed_cmdline(_config, _config.working_directory, args);
