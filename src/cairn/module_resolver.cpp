@@ -1,16 +1,16 @@
-#include "module_resolver.hpp"
-#include <cctype>
-#include <filesystem>
-#include <fstream>
-#include <stdexcept>
-#include <string>
-#include <string_view>
-#include <system_error>
-#include "utils/hash.hpp"
-#include "utils/log.hpp"
-#include "utils/filesystem.hpp"
-#include "utils/fkyaml.hpp"
-#include "utils/utf_8.hpp"
+module cairn.module_resolver;
+import <cctype>;
+import <filesystem>;
+import <fstream>;
+import <stdexcept>;
+import <string>;
+import <string_view>;
+import <system_error>;
+import cairn.utils.hash;
+import cairn.utils.log;
+import cairn.utils.filesystem;
+import cairn.utils.vendors;
+import cairn.utils.utf8;
 
 
 std::string_view ModuleResolver::modules_yaml = "modules.yaml";

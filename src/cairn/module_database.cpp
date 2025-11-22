@@ -1,24 +1,23 @@
-#include "module_database.hpp"
-#include <atomic>
-#include "module_resolver.hpp"
-#include "module_type.hpp"
-#include "scanner.hpp"
-#include "source_def.hpp"
-#include "utils/arguments.hpp"
-#include "utils/hash.hpp"
-#include "utils/log.hpp"
-#include "utils/filesystem.hpp"
-#include "abstract_compiler.hpp"
-#include "compile_commands_supp.hpp"
-#include "utils/serializer.hpp"
-#include "utils/serialization_rules.hpp" // IWYU pragma: keep.
-#include <ostream>
-#include <queue>
-#include <unordered_set>
-#include <ranges>
+module cairn.module_database;
 
+import cairn.module_type;
+import cairn.module_resolver;
+import cairn.source_scanner;
+import cairn.source_def;
+import cairn.utils.arguments;
+import cairn.utils.hash;
+import cairn.utils.log;
+import cairn.utils.filesystem;
+import cairn.abstract_compiler;
+import cairn.compile_commands;
+import cairn.utils.serializer;
+import cairn.utils.serializer.rules;
 
-
+import <atomic>;
+import <ostream>;
+import <queue>;
+import <unordered_set>;
+import <ranges>;
 
 
 

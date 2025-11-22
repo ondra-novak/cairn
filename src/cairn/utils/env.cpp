@@ -1,3 +1,4 @@
+module;
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -5,10 +6,55 @@
 #include <unistd.h>
 extern char **environ;
 #endif
-#include <system_error>
 
-#include "env.hpp"
-#include <cwctype>
+export module cairn.utils.env;
+
+import <system_error>;
+import <cwctype>;
+import <string>;
+import <map>;
+import <vector>;
+
+
+export class SystemEnvironment {
+public:
+
+#ifdef _WIN32
+    using native_string = std::wstring;
+#else  
+    using native_string = std::u8string;
+#endif
+
+    using CharType = native_string::value_type;
+    using native_string_view = std::basic_string_view<CharType>;
+    struct Buffer {
+        std::vector<CharType> data;
+        std::vector<CharType *> pointers;
+    };
+
+    SystemEnvironment() = default;
+    static SystemEnvironment current();
+    static SystemEnvironment parse(std::string_view data);
+
+    CharType **posix_format(Buffer &buff) const;
+    native_string to_windows_format() const;
+
+    template<typename Me, typename Arch>
+    static void serialize(Me &me, Arch &arch) {
+        arch(me._env_data);
+    }
+    
+    std::basic_string_view<CharType> operator[](const std::basic_string_view<CharType> &key) const;
+    std::basic_string_view<CharType> operator[](const char *key) const;
+
+protected:
+    struct Compare {
+        bool operator()(native_string_view a, native_string_view b) const;
+        using is_transparent = int;
+    };
+    std::map<native_string, native_string, Compare > _env_data;
+
+};
 
 SystemEnvironment SystemEnvironment::current() {
     SystemEnvironment env;  

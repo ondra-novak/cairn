@@ -1,0 +1,18 @@
+files:
+  - arguments.cpp
+  - fd_streambuf.cpp
+  - process_posix.cpp
+  - process_win.cpp
+  - process.cpp
+  - env.cpp
+  - log.cpp
+  - log-impl.cpp
+  - vendors.cpp
+  - hash.cpp
+  - utf_8.cpp
+  - thread_pool.cpp
+  - version.cpp
+  - filesystem.cpp
+  - serialization_rules.cpp
+  - serializer.cpp
+  

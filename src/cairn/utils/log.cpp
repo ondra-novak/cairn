@@ -1,52 +1,97 @@
-#include "log.hpp"
-#include <iostream>
-#include <mutex>
+export module cairn.utils.log;
 
-static std::mutex logmx;
+export import <format>;
+import <vector>;
+import <functional>;
+import <array>;
 
-Log::Level Log::disabled_level = Log::Level::verbose;
-Log::Formatter Log::pre_format = [](Log::Level lev, Log::Buffer &buff) {
-     using namespace std::chrono;
-/*    auto now = system_clock::now();
-    auto secs = floor<seconds>(now);
-    auto ms = duration_cast<milliseconds>(now - secs).count();
-    std::time_t t = system_clock::to_time_t(secs);
-    std::tm utc_time = *std::gmtime(&t);
-    buff.resize(30);
-    buff.resize(std::strftime(buff.data(), buff.size(), "%Y-%m-%d %H:%M:%S", &utc_time));
-    std::format_to(std::back_inserter(buff),".{:03d}Z {} ",  static_cast<int>(ms), strLevel[static_cast<int>(lev)]);
-    */
-    auto lvstr= strLevel[static_cast<int>(lev)];
-    if (!lvstr.empty()) {
-        buff.insert(buff.end(), lvstr.begin(), lvstr.end());
-        buff.push_back(' ');
+export struct Log {
+
+    enum class Level {
+        error = 0,      //all errors
+        warning = 1,    //serious issues
+        verbose = 2,    //verbose commands, describe steps
+        debug = 3       //all debug informations
+    };
+
+    static constexpr std::array<std::string_view, 4> strLevel = {
+        "!ERR","WARN","","debug"
+    };
+
+
+    using Buffer = std::vector<char>;
+    using Formatter = std::function<void(Level, Buffer &)>;
+    using Publisher = std::function<void(Level, const Buffer &)>;
+
+
+
+    template<typename ... Args>
+    static void debug(std::format_string<Args...> fmt, Args && ... args) {
+        output(Level::debug, std::move(fmt), std::forward<Args>(args)...);
     }
-       
+
+    template<typename ... Args>
+    static void error(std::format_string<Args...> fmt, Args && ... args) {
+        output(Level::error, std::move(fmt), std::forward<Args>(args)...);
+    }
+
+    template<typename ... Args>
+    static void verbose(std::format_string<Args...> fmt, Args && ... args) {
+        output(Level::verbose, std::move(fmt), std::forward<Args>(args)...);
+    }
+
+    template<typename ... Args>
+    static void warning(std::format_string<Args...> fmt, Args && ... args) {
+        output(Level::warning, std::move(fmt), std::forward<Args>(args)...);
+        
+    }
+
+    static bool is_level_enabled(Level level) {
+        return (disabled_level >= level);
+    }
+
+    template<typename ... Args>
+    static void output(Level level, std::format_string<Args...> fmt, Args && ... args) {
+        if (!is_level_enabled(level)) return;
+        auto buf = get_buffer(level);        
+        std::format_to(std::back_inserter(buf), fmt, std::forward<Args>(args)...);
+        send_buffer(level, buf);
+    }
+
+    static Level disabled_level; 
+    static Buffer &get_buffer(Level level);
+    static void send_buffer(Level level, Buffer &buffer);
+
+    static Formatter pre_format;
+    static Formatter post_format;
+    static Publisher publisher;
+
+
+    static void set_formatter(Formatter preformat,
+                              Formatter postformat);
+    static void set_publisher(Publisher publisher);
+    
+    static void set_level(Level l) {
+        disabled_level = l;
+    }
+ 
+
 };
-Log::Formatter Log::post_format = {};
-Log::Publisher Log::publisher = [](auto, const Log::Buffer &buff){
-    std::lock_guard _(logmx);
-    std::cerr << std::string_view(buff.begin(), buff.end()) << std::endl;
+
+template <std::invocable F>
+struct std::formatter<F> : std::formatter<std::invoke_result_t<F>> {
+    // Dědíme formatter pro návratový typ funkce
+    using base = std::formatter<std::invoke_result_t<F>>;
+    using result_type = std::invoke_result_t<F>;
+
+    // parse() přebíráme beze změny
+    constexpr auto parse(std::format_parse_context& ctx) {
+        return base::parse(ctx);
+    }
+
+    // ve formátovací fázi funkci zavoláme a zformátujeme výsledek
+    template <typename FormatContext>
+    auto format(const F& f, FormatContext& ctx) const {
+        return base::format(std::invoke(f), ctx);
+    }
 };
-
-
-Log::Buffer &Log::get_buffer(Level level) { 
-    static thread_local Buffer buff;
-    buff.clear();
-    if (pre_format) pre_format(level, buff);
-    return buff;
-}
-
-void Log::send_buffer(Level level, Buffer &buffer) {
-    if (post_format) post_format(level, buffer);
-    publisher(level, buffer);    
-}
-
-void Log::set_formatter(Formatter preformat, Formatter postformat) {
-    pre_format = std::move(preformat);
-    post_format = std::move(postformat);
-}
-
-void Log::set_publisher(Publisher pub) {
-    publisher = std::move(pub);
-}

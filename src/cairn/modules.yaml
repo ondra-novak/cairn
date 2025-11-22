@@ -1,0 +1,20 @@
+files
+  - main.cpp
+  - build_plan.cpp
+  - build.cpp
+  - abstract_compiler.cpp
+  - source_def.cpp
+  - origin_env.cpp
+  - compile_commands_supp.cpp
+  - compile_commands_supp.ifc.cpp
+  - version.cpp
+  - cli.cpp
+  - compile_target.cpp
+  - module_database.ifc.cpp
+  - module_database.cpp
+  - module_resolver.cpp
+  - module_resolver.ifc.cpp
+prefixes:
+  cairn.utils: utils
+  cairn.compiler: compilers
+

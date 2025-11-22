@@ -1,20 +1,30 @@
-#include "abstract_compiler.hpp"
-#include "builder.hpp"
-#include "cli.hpp"
-#include "module_database.hpp"
-#include "module_type.hpp"
-#include "origin_env.hpp"
-#include "utils/log.hpp"
-#include "compilers/gcc/factory.hpp"
-#include "compilers/clang/factory.hpp"
-#include "compilers/msvc/factory.hpp"
-#include "utils/arguments.hpp"
-#include <exception>
-#include <filesystem>
-#include <memory>
-#include <fstream>
-#include <system_error>
-#include <unordered_set>
+
+
+import cairn.abstract_compiler;
+import cairn.builder;
+import cairn.utils.arguments;
+import cairn.cli;
+import cairn.compiler.clang;
+import cairn.compiler.gcc;
+//import cairn.compiler.msvc;
+import cairn.utils.log;
+import cairn.module_database;
+import cairn.source_scanner;
+import cairn.module_type;
+import cairn.origin_env;
+import cairn.utils.threadpool;
+import cairn.compile_commands;
+import <vector>;
+import <exception>;
+import <filesystem>;
+import <array>;
+import <memory>;
+import <fstream>;
+import <system_error>;
+import <unordered_set>;
+import <algorithm>;
+import <iostream>;
+import <future>;
 
 static constexpr auto gcc_type_1 = ArgumentConstant("gcc");
 static constexpr auto gcc_type_2 = ArgumentConstant("g++");

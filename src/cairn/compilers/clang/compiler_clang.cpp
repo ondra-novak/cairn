@@ -1,19 +1,117 @@
-#include "compiler_clang.hpp"
-#include "compile_commands_supp.hpp"
-#include "factory.hpp"
-#include "../../utils/log.hpp"
-#include "../../utils/utf_8.hpp"
-#include "module_type.hpp"
-#include <algorithm>
-#include <filesystem>
+module cairn.compiler.clang;
 
-#include <fstream>
-#include <regex>
-#include <stdexcept>
-#include <utils/arguments.hpp>
-#include <utils/process.hpp>
-#include <utils/temp_file.hpp>
-#include <memory>
+import cairn.compile_commands;
+import cairn.utils.log;
+import cairn.utils.utf8;
+import cairn.module_type;
+import cairn.utils.arguments;
+import cairn.utils.process;
+import cairn.abstract_compiler;
+import cairn.utils.version;
+import cairn.origin_env;
+import cairn.source_def;
+import cairn.source_scanner;
+import cairn.utils.env;
+import cairn.utils.log;
+
+import <algorithm>;
+import <filesystem>;
+import <iterator>;
+import <fstream>;
+import <regex>;
+import <stdexcept>;
+import <memory>;
+import <array>;
+import <span>;
+import <optional>;
+
+class CompilerClang : public AbstractCompiler {
+public:
+
+    virtual std::string_view get_compiler_name() const override {
+        return "clang";
+    }
+
+    virtual void prepare_for_build() override;
+
+
+    virtual int compile(
+        const OriginEnv &env,
+        const SourceDef &src,
+        std::span<const SourceDef> modules,
+        CompileResult &result) const override;
+    
+    virtual int link(std::span<const std::filesystem::path> objects, const std::filesystem::path &target) const override;
+
+    virtual SourceScanner::Info scan(const OriginEnv &env, const std::filesystem::path &file) const override;
+
+
+    std::string preprocess(const OriginEnv &env, const std::filesystem::path &file) const;
+
+    CompilerClang(Config config);
+
+    virtual bool initialize_build_system(BuildSystemConfig ) override {
+        return false;
+    }
+
+    virtual bool commit_build_system() override {
+        return false;
+    }
+
+
+    virtual void update_compile_commands(CompileCommandsTable &cc,  const OriginEnv &env, 
+                const SourceDef &src, std::span<const SourceDef> modules) const  override;
+
+
+    virtual void initialize_module_map(std::span<const ModuleMapping> ) override {}
+
+
+    static constexpr auto stdcpp=ArgumentConstant("-std=c++");
+
+    //preprocessor options
+    static constexpr auto preproc_D = ArgumentConstant("-D");
+    static constexpr auto preproc_U = ArgumentConstant("-U");
+    static constexpr auto preproc_I = ArgumentConstant("-I");
+    static constexpr auto preproc_define_macro = ArgumentConstant("--define-macro");
+    static constexpr auto preproc_undefine_macro = ArgumentConstant("--undefine-macro");
+    static constexpr auto preproc_include_directory = ArgumentConstant("--include-directory");
+    
+    static constexpr auto all_preproc = std::array<ArgumentStringView, 6>({
+        preproc_D, preproc_I, preproc_U, preproc_define_macro, preproc_undefine_macro, preproc_include_directory
+    });
+
+
+    virtual SourceStatus source_status(ModuleType , const std::filesystem::path &file, std::filesystem::file_time_type tm) const override;
+protected:
+    Config _config;
+    std::filesystem::path _module_cache;
+    std::filesystem::path _object_cache;
+    Version _version;
+    
+  
+
+    std::filesystem::path get_bmi_path(const SourceDef &src) const {
+        auto n = src.name;
+        for (auto &c: n) if (c == ':') c = '-';
+        n.append(".pcm");
+        std::filesystem::path fname(n);
+        return _config.working_directory/"pcm"/fname;
+    };
+
+    std::filesystem::path get_obj_path(const SourceDef &src) const {
+        return _config.working_directory/"obj"/intermediate_file(src,".o");
+    }
+    std::filesystem::path get_hdr_bmi_path(const SourceDef &src) const {
+        return _config.working_directory/"pcm"/intermediate_file(src,"~hdr.pcm");
+    }
+    std::vector<ArgumentString> build_arguments(bool precompile_stage,  const OriginEnv &env,
+        const SourceDef &src,
+        std::span<const SourceDef> modules,
+        CompileResult &result) const;
+    
+
+    static Version get_clang_version(Config &cfg);
+};
 
 Version CompilerClang::get_clang_version(Config &cfg) {
     std::vector<ArgumentString> args;    

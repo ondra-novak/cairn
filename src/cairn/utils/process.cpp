@@ -1,5 +1,6 @@
+export module cairn.utils.process;
 #ifdef _WIN32
-#include "process_win.cpp"
+export import :win;
 #else
-#include "process_posix.cpp"
+export import :posix;
 #endif

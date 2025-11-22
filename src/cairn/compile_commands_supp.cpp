@@ -1,13 +1,19 @@
-#include "compile_commands_supp.hpp"
-#include "utils/arguments.hpp"
-#include "utils/nlohmann_json.hpp"
-#include "utils/utf_8.hpp"
-#include <filesystem>
-#include <fstream>
-#include <ostream>
-#include <sstream>
-#include <string>
-#include <string_view>
+module cairn.compile_commands;
+
+import cairn.utils.arguments;
+import cairn.utils.vendors;
+import cairn.utils.hash;
+import cairn.utils.utf8;
+
+import <filesystem>;
+import <fstream>;
+import <ostream>;
+import <sstream>;
+import <string>;
+import <string_view>;
+import <filesystem>;
+import <unordered_map>;
+import <vector>;
 
 
 void CompileCommandsTable::load(std::filesystem::path p)

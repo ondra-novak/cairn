@@ -1,10 +1,42 @@
+export module cairn.cli;
 
-#include "cli.hpp"
-#include "utils/arguments.hpp"
-#include "utils/log.hpp"
-#include "version.hpp"
-#include <filesystem>
+import cairn.utils.arguments;
+import cairn.utils.log;
+import cairn.version;
+import cairn.compile_target;
+import <filesystem>;
+import <vector>;
 
+export struct AppSettings {
+
+    enum Mode {
+        compile_and_link,
+        compile_only,
+        link_only
+    };
+
+    ArgumentString compiler_type = {};
+    std::filesystem::path compile_commands_json = {};
+    std::filesystem::path env_file_json = {};
+    std::filesystem::path working_directory_path = {};
+    std::filesystem::path compiler_path = {};
+    std::vector<ArgumentString> compiler_arguments = {};
+    std::vector<ArgumentString> linker_arguments = {};
+    std::vector<ArgumentString> lib_arguments =  {};
+    std::vector<CompileTarget> targets = {};
+    std::filesystem::path scan_file = {};
+    unsigned int threads = 1;
+    Mode mode = compile_and_link;
+    bool show_help = false;
+    bool recompile = false;
+    bool keep_going = false;
+    bool drop_database = false;
+    bool list = false;
+
+};
+
+export bool parse_cmdline(AppSettings &settings, CliReader<ArgumentString::value_type> &cli);
+export std::string_view get_help();
 
 static constexpr auto compile_flag = ArgumentConstant("--compile:");
 static constexpr auto link_flag = ArgumentConstant("--link:");

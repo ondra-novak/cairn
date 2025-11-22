@@ -1,14 +1,95 @@
-#include "compiler_gcc.hpp"
-#include "compile_commands_supp.hpp"
-#include "factory.hpp"
-#include "../../utils/log.hpp"
-#include "../../utils/utf_8.hpp"
-#include <fstream>
-#include <memory>
-#include <future>
-#include <utils/arguments.hpp>
-#include <utils/process.hpp>
-#include <regex>
+module cairn.compiler.gcc;
+
+import cairn.compile_commands;
+import cairn.utils.log;
+import cairn.utils.utf8;
+import cairn.utils.process;
+import cairn.utils.arguments;
+import cairn.abstract_compiler;
+import cairn.utils.version;
+import cairn.utils.threadpool;
+import cairn.source_scanner;
+import cairn.source_def;
+import cairn.origin_env;
+import cairn.module_type;
+import cairn.utils.env ;
+
+import <filesystem>;
+import <iostream>;
+import <fstream>;
+import <memory>;
+import <future>;
+import <regex>;
+import <array>;
+
+class CompilerGcc : public AbstractCompiler {
+public:
+
+    virtual std::string_view get_compiler_name() const override {
+        return "gcc";
+    }
+
+    virtual void prepare_for_build() override;
+
+
+    virtual int compile(
+        const OriginEnv &env,
+        const SourceDef &src,
+        std::span<const SourceDef> modules,
+        CompileResult &result) const override;
+    
+    virtual int link(std::span<const std::filesystem::path> objects, const std::filesystem::path &target) const override;
+
+    virtual SourceScanner::Info scan(const OriginEnv &env, const std::filesystem::path &file) const override;
+
+
+    std::pair<std::string,std::string> preprocess(const OriginEnv &env, const std::filesystem::path &file) const;
+
+    CompilerGcc(Config config);
+
+    virtual bool initialize_build_system(BuildSystemConfig ) override {return false;}
+
+    virtual bool commit_build_system() override {return false;}
+
+
+    virtual void update_compile_commands(CompileCommandsTable &cc,  const OriginEnv &env, 
+                const SourceDef &src, std::span<const SourceDef> modules) const  override;
+
+
+    virtual void initialize_module_map(std::span<const ModuleMapping> ) override;
+
+    virtual SourceStatus source_status(ModuleType , const std::filesystem::path &file, std::filesystem::file_time_type tm) const override;
+
+        //preprocessor options
+    static constexpr auto preproc_D = ArgumentConstant("-D");
+    static constexpr auto preproc_U = ArgumentConstant("-U");
+    static constexpr auto preproc_I = ArgumentConstant("-I");
+    static constexpr auto preproc_define_macro = ArgumentConstant("--define-macro");
+    static constexpr auto preproc_undefine_macro = ArgumentConstant("--undefine-macro");
+    static constexpr auto preproc_include_directory = ArgumentConstant("--include-directory");
+    
+    static constexpr auto all_preproc = std::array<ArgumentStringView, 6>({
+        preproc_D, preproc_I, preproc_U, preproc_define_macro, preproc_undefine_macro, preproc_include_directory
+    });
+
+protected:
+    Config _config;
+    std::filesystem::path _module_cache;
+    std::filesystem::path _object_cache;
+    std::filesystem::path _module_mapper;
+    Version _version;
+    mutable ThreadPool _helper;
+    
+
+    static Version get_gcc_version(Config &cfg);
+
+    std::vector<ArgumentString> build_arguments(const OriginEnv &env,
+        const SourceDef &source,
+        std::span<const SourceDef> modules,
+        CompileResult &result) const;
+
+
+};
 
 Version CompilerGcc::get_gcc_version(Config &cfg) {
     std::vector<ArgumentString> args;
