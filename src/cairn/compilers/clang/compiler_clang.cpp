@@ -158,7 +158,7 @@ std::vector<ArgumentString> CompilerClang::build_arguments(bool precompile_stage
         if (m.type != ModuleType::system_header 
             && m.type != ModuleType::user_header
             && m.path.parent_path() == _module_cache) {
-                break;       //skip modules in cache, not need specify
+               continue;
             }
         append_arguments(args, {"-fmodule-file={}"}, {path_arg(m.path)});
         disable_experimental_warning = true;    

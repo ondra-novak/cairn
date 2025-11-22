@@ -393,6 +393,8 @@ void ModuleDatabase::collect_bmi_references(PSource from, FnRanged &&ret) const 
         auto f = find(r);
         if (f) {
             if (result.emplace(f).second) q.push(f);
+        } else {
+            Log::error("Reference {} not found in database", r.name);
         }
     }
     while (!q.empty()) {
@@ -402,6 +404,8 @@ void ModuleDatabase::collect_bmi_references(PSource from, FnRanged &&ret) const 
             auto ef = find(r);
             if (ef) {
                 if (result.emplace(ef ).second) q.push(ef);
+            } else {
+                Log::error("Reference {} not found in database", r.name);
             }
         }
     }

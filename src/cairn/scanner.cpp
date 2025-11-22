@@ -61,6 +61,18 @@ auto skip_string(auto pos, auto end) {
     return pos;
 }
 
+auto skip_char(auto pos, auto end) {
+    while (pos != end) {
+        char c = *pos;
+        ++pos;
+        if (c == '\\') {
+            ++pos;
+            if (pos == end) break;
+        } else if (c == '\'') break;
+    }
+    return pos;
+}
+
 auto parse_string(std::vector<char> &buff, auto pos, auto end) {
     while (pos != end) {
         char c = *pos;
@@ -98,6 +110,7 @@ auto skip_braces(char t, auto pos, auto end) -> decltype(pos) {
             case '{':  pos = skip_braces('}', pos, end); break;
             case '[':  pos = skip_braces(']', pos, end); break;
             case '"':  pos = skip_string( pos, end); break;
+            case '\'':  pos = skip_char( pos, end); break;
             default: break;
         }
     }
@@ -132,6 +145,7 @@ auto simple_tokenizer(std::string_view text) {
                         case '[': pos = skip_braces(']', pos, end);break;
                         case '"': pos = parse_string(buff, pos, end);
                             return {TokenType::string, std::string_view(buff.begin(), buff.end())};
+                        case '\'': pos = skip_char(pos, end);break;
                         case '<': if (header_angled) {
                             pos = parse_header_angled(buff, pos, end);
                             return {TokenType::angled_include, std::string_view(buff.begin(), buff.end())};
@@ -201,7 +215,8 @@ SourceScanner::Info SourceScanner::scan_string_2(const std::string_view text) {
     do {
         cont = true;      
         auto s = tkn();
-
+        
+       
         if (s.type == TokenType::keyword) {
             if (s.text == "module") {
                 s = tkn();
