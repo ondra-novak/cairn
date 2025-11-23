@@ -73,5 +73,6 @@ protected:
         std::span<const SourceDef> modules,
         CompileResult &result) const;
 
+    std::filesystem::path create_adhoc_mapper(const SourceDef &src) const;
 
 };

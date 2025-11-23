@@ -3,6 +3,7 @@
 #include "factory.hpp"
 #include "../../utils/log.hpp"
 #include "../../utils/utf_8.hpp"
+#include "module_type.hpp"
 #include <fstream>
 #include <memory>
 #include <future>
@@ -118,8 +119,7 @@ std::pair<std::string,std::string> CompilerGcc::preprocess(const OriginEnv &env,
                      std::istreambuf_iterator<char>());
 
     auto err =errprom.get_future().get();
-    if (p.waitpid_status()) {
-        std::cerr << err << std::endl;
+    if (p.waitpid_status()) {                
         dump_failed_cmdline(_config, env.working_dir, args);
     }
     return {std::move(out),std::move(err)};
@@ -178,7 +178,7 @@ void CompilerGcc::initialize_module_map(std::span<const ModuleMapping> def)
         switch (x.type) {
             case ModuleType::user_header: {
                 auto [name, path] = separate_header_ref(x.name);                
-                add_record(x, "./", name);
+//                add_record(x, "./", name);
                 add_record(x, (x.work_dir/"xxx").parent_path().string(), "/", name); //ensure, that x.work_dir is dir
             }break;
             case ModuleType::system_header: {                
@@ -219,6 +219,29 @@ int CompilerGcc::link(std::span<const std::filesystem::path> objects, const std:
     return r;
 }
 
+std::filesystem::path CompilerGcc::create_adhoc_mapper(const SourceDef &src) const {
+    auto mapper_file = _module_cache/intermediate_file(src, ".map");
+    auto gcm_path = intermediate_file(src, ".gcm");
+
+    std::ofstream f(mapper_file, std::ios::out|std::ios::trunc);
+    f << "$root " << _module_cache.string() << "\n";
+    switch (src.type) {
+        case ModuleType::system_header:{                
+                auto [name, path] = separate_header_ref(src.name);                
+                f << path << " " << gcm_path.string() << "\n";                
+                return mapper_file;
+        }
+        case ModuleType::user_header:{                
+                auto [name, path] = separate_header_ref(src.name);                
+                f << "./" << name <<  " " << gcm_path.string() << "\n";                                
+                return mapper_file;
+        }
+        default:
+            return _module_mapper;
+    }
+}
+
+
 std::vector<ArgumentString> CompilerGcc::build_arguments(const OriginEnv &env,
         const SourceDef &source,
         std::span<const SourceDef> ,
@@ -226,7 +249,7 @@ std::vector<ArgumentString> CompilerGcc::build_arguments(const OriginEnv &env,
 
     std::vector<ArgumentString> args;
     args = prepare_args(env,_config,'-');                                                
-    append_arguments(args, {"-fmodules-ts", "-fmodule-mapper={}"},{path_arg(_module_mapper)});
+    append_arguments(args, {"-fmodules-ts", "-fmodule-mapper={}"},{path_arg(create_adhoc_mapper(source))});
 
     switch (source.type) {
 
@@ -256,7 +279,6 @@ std::vector<ArgumentString> CompilerGcc::build_arguments(const OriginEnv &env,
         }
     }
 }
-
 
 int CompilerGcc::compile(const OriginEnv &env, 
         const SourceDef &source,
