@@ -1,6 +1,8 @@
 #include "abstract_compiler.hpp"
+#include "build_plan.hpp"
 #include "builder.hpp"
 #include "cli.hpp"
+#include "compile_commands_supp.hpp"
 #include "module_database.hpp"
 #include "module_type.hpp"
 #include "origin_env.hpp"
@@ -9,12 +11,16 @@
 #include "compilers/clang/factory.hpp"
 #include "compilers/msvc/factory.hpp"
 #include "utils/arguments.hpp"
+#include "utils/utf_8.hpp"
 #include <exception>
 #include <filesystem>
+#include <iterator>
 #include <memory>
 #include <fstream>
 #include <system_error>
+#include <thread>
 #include <unordered_set>
+#include <variant>
 
 static constexpr auto gcc_type_1 = ArgumentConstant("gcc");
 static constexpr auto gcc_type_2 = ArgumentConstant("g++");
@@ -180,6 +186,70 @@ static void list_modules(const ModuleDatabase &db, const std::vector<AbstractCom
 
 }
 
+static void generate_makefile(const BuildPlan<ModuleDatabase::CompileAction> &plan,            
+            std::filesystem::path output            
+        ) {
+    auto cur_dir = output.parent_path();;
+    std::ofstream mk(output, std::ios::out|std::ios::trunc);
+    std::size_t idx = 0;
+    std::unordered_set<unsigned int> all_targets;
+    mk << ".PHONY: all";
+    for (idx = 0; idx < plan.get_plan().size(); ++idx) {
+        mk << " t_" << idx;
+        all_targets.insert(idx);
+    }    
+    for (idx = 0; idx < plan.get_plan().size(); ++idx) {
+        for (const auto &x: plan.get_plan()[idx].dependencies) {
+            all_targets.erase(x);
+        }
+    }
+    
+    std::unordered_set<std::filesystem::path> workdirs;
+
+    mk << "\nall:";
+    for (auto &x: all_targets) {
+        mk << " t_"<< x;
+    }
+    mk << "\n";
+    mk << "\n";
+    idx = 0;
+    ArgumentString srchpath = path_arg((cur_dir/".").lexically_normal());
+    auto remove_abs_path = [&](ArgumentString arg) {
+        auto np = arg.find(srchpath);
+        while (np != arg.npos) {
+            arg = arg.substr(0,np) + arg.substr(np+srchpath.size());
+            np = arg.find(srchpath);
+        }
+        return arg;
+    };
+    for (const auto &p:plan) {
+        CompileCommandsTable cctmp;
+        p.action.add_to_cctable(cctmp);
+        mk << "t_" << idx << ":";
+        for (auto &d: p.dependencies) {
+            mk << " t_" << d;
+        }
+        mk << "| workdir \n";
+        for (auto &[k,v]: cctmp._table) {
+            
+            ArgumentString arg = remove_abs_path(v.command);
+            mk << "\t";
+            to_utf8(arg.begin(), arg.end(), std::ostreambuf_iterator<char>(mk));
+            mk << "\n";
+            workdirs.insert(v.output.parent_path());
+        }
+        ++idx;
+        mk << "\n";
+    }
+    mk << "\nworkdir:\n";
+    for (auto &w: workdirs) {
+        auto p = remove_abs_path(path_arg(w));
+        mk << "\tmkdir -p ";
+        to_utf8(p.begin(), p.end(), std::ostreambuf_iterator<char>(mk));
+        mk << "\n";
+    }
+}
+
 
 
 int tmain(int argc, ArgumentString::value_type *argv[]) {
@@ -244,9 +314,9 @@ int tmain(int argc, ArgumentString::value_type *argv[]) {
         else db.check_for_recompile();
 
         auto plan = db.create_build_plan(*compiler, *default_env, 
-                    settings.targets, 
-                    settings.recompile, 
-                    !settings.lib_arguments.empty());
+                    settings.targets, false,  !settings.lib_arguments.empty());
+
+    
                 
         std::vector<AbstractCompiler::ModuleMapping> module_map;
         if (settings.list) {
@@ -257,6 +327,8 @@ int tmain(int argc, ArgumentString::value_type *argv[]) {
 
 
         auto threads = settings.threads;
+        if (threads == 0) threads = std::thread::hardware_concurrency();
+
         compiler->prepare_for_build();
         bool use_build_system = compiler->initialize_build_system({threads, settings.keep_going});
         if (use_build_system) threads = 1;
@@ -271,6 +343,12 @@ int tmain(int argc, ArgumentString::value_type *argv[]) {
             cctable.load(settings.compile_commands_json);
             db.update_compile_commands(cctable, *compiler);
             cctable.save(settings.compile_commands_json);
+        }
+        if (!settings.generate_makefile.empty()) {
+            db.recompile_all();
+            auto mplan = db.create_build_plan(*compiler, *default_env, 
+                    settings.targets, false,  !settings.lib_arguments.empty());
+            generate_makefile(mplan, settings.generate_makefile);
         }
 
         if (db.is_dirty()) {

@@ -40,6 +40,8 @@ Switches
 -s        output only errors (silent)
 -d        debug mode (output everyting)
 -l --list don't compile, just output list of all referenced modules and headers
+-M<file>  don't compile, create makefile containing all build steps needs to 
+          create targets. 
 
 outputN   specifies path/name of output executable
 fileN.cpp specifies path/name of main file for this executable
@@ -147,6 +149,7 @@ bool parse_cmdline(AppSettings &settings, CliReader<ArgumentString::value_type> 
             case 'h': settings.show_help = true;break;
             case 'k': settings.keep_going = true;break;
             case 'l': settings.list = true;break;
+            case 'M': settings.generate_makefile = (curdir/cli.text()).lexically_normal();break;
         }
     }
     {

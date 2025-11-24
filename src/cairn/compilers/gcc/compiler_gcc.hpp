@@ -57,6 +57,10 @@ public:
         preproc_D, preproc_I, preproc_U, preproc_define_macro, preproc_undefine_macro, preproc_include_directory
     });
 
+    virtual void update_link_command(CompileCommandsTable &cc,  
+            std::span<const std::filesystem::path> objects, const std::filesystem::path &output) const override;
+
+
 protected:
     Config _config;
     std::filesystem::path _module_cache;

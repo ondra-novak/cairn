@@ -112,6 +112,8 @@ public:
      */
     virtual void update_compile_commands(CompileCommandsTable &cc,  const OriginEnv &env, 
                 const SourceDef &src, std::span<const SourceDef> modules) const = 0;
+    virtual void update_link_command(CompileCommandsTable &cc,  
+                std::span<const std::filesystem::path> objects, const std::filesystem::path &output) const = 0;
 
     ///Perform scan operation
     /**

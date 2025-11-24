@@ -257,3 +257,11 @@ CompilerClang::SourceStatus CompilerClang::source_status(ModuleType t, const std
 std::unique_ptr<AbstractCompiler> create_compiler_clang(AbstractCompiler::Config cfg) {
     return std::make_unique<CompilerClang>(std::move(cfg));
 }
+
+void CompilerClang::update_link_command(CompileCommandsTable &cc,  
+        std::span<const std::filesystem::path> objects, const std::filesystem::path &output) const {
+        std::vector<ArgumentString> args = _config.link_options;
+        for (const auto &x: objects) args.push_back(path_arg(x));
+        append_arguments(args, {"-o","{}"}, {path_arg(output)});
+        cc.update(cc.record(_config.working_directory, {}, _config.program_path, std::move(args), output));
+    }

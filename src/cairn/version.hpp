@@ -1,3 +1,3 @@
 #pragma once
 #include <string_view>
-constexpr std::string_view APP_VERSION = "5b7ada0";
+constexpr std::string_view APP_VERSION = "v0.9-9-g99668bc";

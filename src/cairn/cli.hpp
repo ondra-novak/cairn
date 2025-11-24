@@ -23,6 +23,7 @@ struct AppSettings {
     std::vector<ArgumentString> lib_arguments =  {};
     std::vector<CompileTarget> targets = {};
     std::filesystem::path scan_file = {};
+    std::filesystem::path generate_makefile = {};
     unsigned int threads = 1;
     Mode mode = compile_and_link;
     bool show_help = false;

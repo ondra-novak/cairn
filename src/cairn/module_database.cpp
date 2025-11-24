@@ -12,10 +12,12 @@
 #include "compile_commands_supp.hpp"
 #include "utils/serializer.hpp"
 #include "utils/serialization_rules.hpp" // IWYU pragma: keep.
+#include <filesystem>
 #include <ostream>
 #include <queue>
 #include <unordered_set>
 #include <ranges>
+#include <variant>
 
 
 
@@ -602,7 +604,13 @@ void ModuleDatabase::CompileAction::add_to_cctable(CompileCommandsTable &cctable
         const PSource &f = std::get<PSource>(step);
         std::vector<ArgumentString> result;
         compiler.update_compile_commands(cctable, env, {f->type, f->name, f->source_file}, get_references(f));
-    } 
+    } else if (std::holds_alternative<LinkStep>(step)) {
+        const LinkStep &lnk = std::get<LinkStep>(step);
+        std::vector<std::filesystem::path> objs;
+        objs.reserve(lnk.first.size());
+        for (auto &f: lnk.first) objs.push_back(f->object_path);
+        compiler.update_link_command(cctable, objs, lnk.second);
+    }
 }
 
 template<>
