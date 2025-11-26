@@ -19,6 +19,7 @@
 #include <utils/temp_file.hpp>
 #include <memory>
 
+
 Version CompilerClang::get_clang_version(Config &cfg) {
     std::vector<ArgumentString> args;    
     append_arguments(args, {"--version"},{});

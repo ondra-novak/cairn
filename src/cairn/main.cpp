@@ -52,7 +52,7 @@ static std::unique_ptr<AbstractCompiler> create_compiler(const AppSettings &sett
             factory = &create_compiler_gcc;
         } else if (contains(settings.compiler_type, clang_types)) {
             factory = &create_compiler_clang;
-#ifdef _WIN3
+#ifdef _WIN32
         } else if (contains(settings.compiler_type, msvc_types)) {
             factory = &create_compiler_msvc;
 #endif            
@@ -65,7 +65,7 @@ static std::unique_ptr<AbstractCompiler> create_compiler(const AppSettings &sett
         std::transform(exec_name.begin(), exec_name.end(), exec_name.begin(),
                [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
 
-#ifdef _WIN3
+#ifdef _WIN32
         if (exec_name.rfind("cl.exe") != exec_name.npos) {
             factory = &create_compiler_msvc;            
         } else
@@ -198,11 +198,11 @@ static void generate_makefile(const BuildPlan<ModuleDatabase::CompileAction> &pl
     mk << ".PHONY: all";
     for (idx = 0; idx < plan.get_plan().size(); ++idx) {
         mk << " t_" << idx;
-        all_targets.insert(idx);
+        all_targets.insert(static_cast<unsigned int>(idx));
     }    
     for (idx = 0; idx < plan.get_plan().size(); ++idx) {
         for (const auto &x: plan.get_plan()[idx].dependencies) {
-            all_targets.erase(x);
+            all_targets.erase(static_cast<unsigned int>(x));
         }
     }
     

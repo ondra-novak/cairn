@@ -23,6 +23,9 @@ public:
     virtual SourceScanner::Info scan(const OriginEnv &env, const std::filesystem::path &file) const override;
     virtual void update_compile_commands(CompileCommandsTable &cc,  const OriginEnv &env, 
                 const SourceDef &src, std::span<const SourceDef> modules) const  override;
+    virtual void update_link_command(CompileCommandsTable &cc,  
+                std::span<const std::filesystem::path> objects, const std::filesystem::path &output) const override;
+
 
     virtual bool initialize_build_system(BuildSystemConfig ) override;
     virtual bool commit_build_system() override;
@@ -83,5 +86,6 @@ protected:
         const std::filesystem::path &workdir, 
         std::span<const ArgumentString> arguments) const;
 
+    void create_macro_summary_file(const std::filesystem::path &target);
 };
 #endif

@@ -32,8 +32,9 @@ void CompileCommandsTable::load(std::filesystem::path p)
     }
 }
 
-auto compatible_string(ArgumentStringView other) {
-    if constexpr(std::is_same_v<ArgumentStringView::value_type, char8_t>) {
+template<typename T>
+auto compatible_string(T other) {
+    if constexpr(std::is_same_v<typename T::value_type, char8_t>) {
         return string_from_u8(other);
     } else {
         return other;
