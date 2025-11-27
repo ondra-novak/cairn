@@ -13,6 +13,9 @@ import cairn.source_def;
 import cairn.source_scanner;
 import cairn.utils.env;
 import cairn.utils.log;
+import cairn.utils.threadpool;
+import cairn.preprocess;
+import cairn.gnu_compiler_setup;
 
 import <algorithm>;
 import <filesystem>;

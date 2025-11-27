@@ -1,17 +1,16 @@
-#pragma once
+export module cairn.preprocess;
 
-#include <algorithm>
-#include <filesystem>
-#include <optional>
-#include <span>
-#include <string>
-#include <unordered_map>
-#include <unordered_set>
-#include <vector>
-#include <array>
+import <span>;
+import <filesystem>;
+import <string>;
+import <vector>;
+import <optional>;
+import <unordered_map>;
+import <unordered_set>;
+import <algorithm>;
 
 
-class StupidPreprocessor {
+export class StupidPreprocessor {
 public:
 
     void append_includes(std::span<const std::filesystem::path> paths);

@@ -1,8 +1,8 @@
 export module cairn.module_database;
 
-<<<<<<< HEAD:src/cairn/module_database.ifc.cpp
 import cairn.module_type;
 import cairn.source_scanner;
+import cairn.module_resolver;
 import cairn.utils.arguments;
 import cairn.utils.hash;
 import cairn.origin_env;
@@ -10,16 +10,6 @@ import cairn.build_plan;
 import cairn.compile_target;
 import cairn.abstract_compiler;
 import cairn.compile_commands;
-=======
-#include "module_resolver.hpp"
-#include "module_type.hpp"
-#include "scanner.hpp"
-#include "utils/arguments.hpp"
-#include "utils/hash.hpp"
-#include "origin_env.hpp"
-#include "build_plan.hpp"
-#include "compile_target.hpp"
->>>>>>> origin/main:src/cairn/module_database.hpp
 
 import <atomic>;
 import <chrono>;

@@ -17,6 +17,7 @@ import <ostream>;
 import <queue>;
 import <unordered_set>;
 import <ranges>;
+import <format>;
 
 
 
@@ -591,7 +592,7 @@ bool ModuleDatabase::CompileAction::operator()() const noexcept
                             Log::warning("Duplicate object file: {} for {} origin {}", 
                                 g->object_path.string(), 
                                 g->source_file.string(), 
-                                g->origin->config_file);
+                                g->origin->config_file.string());
                     }
                 }
             }

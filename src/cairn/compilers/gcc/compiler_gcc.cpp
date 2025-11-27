@@ -57,6 +57,9 @@ public:
 
     virtual void update_compile_commands(CompileCommandsTable &cc,  const OriginEnv &env, 
                 const SourceDef &src, std::span<const SourceDef> modules) const  override;
+    virtual void update_link_command(CompileCommandsTable &cc,  
+                std::span<const std::filesystem::path> objects, const std::filesystem::path &output) const override;
+
 
 
     virtual void initialize_module_map(std::span<const ModuleMapping> ) override;
@@ -91,6 +94,7 @@ protected:
         std::span<const SourceDef> modules,
         CompileResult &result) const;
 
+    std::filesystem::path create_adhoc_mapper(const SourceDef &src) const;
 
 };
 
@@ -408,4 +412,12 @@ AbstractCompiler::SourceStatus CompilerGcc::source_status(ModuleType t,
         return AbstractCompiler::source_status(t, file, tm);
     }
 }
+
+void CompilerGcc::update_link_command(CompileCommandsTable &cc,  
+        std::span<const std::filesystem::path> objects, const std::filesystem::path &output) const {
+        std::vector<ArgumentString> args = _config.link_options;
+        for (const auto &x: objects) args.push_back(path_arg(x));
+        append_arguments(args, {"-o","{}"}, {path_arg(output)});
+        cc.update(cc.record(_config.working_directory, {}, _config.program_path, std::move(args), output));
+    }
 

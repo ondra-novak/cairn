@@ -1,5 +1,6 @@
 export module cairn.module_resolver;
 import cairn.origin_env;
+import cairn.compile_target;
 import <vector>;
 import <filesystem>;
 

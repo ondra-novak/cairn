@@ -1,15 +1,8 @@
-#include "preprocess.hpp"
-#include <cctype>
-#include <filesystem>
-#include <fstream>
-#include <optional>
-#include <queue>
-#include <sstream>
-#include <string>
-#include <system_error>
-#include <unordered_set>
-#include <utility>
+module cairn.preprocess;
 
+import <utility>;
+import <queue>;
+import <fstream>;
 
 
 template<typename Fn>

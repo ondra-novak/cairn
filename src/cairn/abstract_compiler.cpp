@@ -163,11 +163,16 @@ public:
     static void dump_failed_cmdline(const Config &cfg, const std::filesystem::path &workdir, std::span<const ArgumentString> cmdline);
     static std::filesystem::path find_in_path(std::filesystem::path name, const SystemEnvironment &env);
 
+    void dry_run(bool enabled) {
+            _disable_build = enabled;
+    }
+
+
+protected:
+    bool _disable_build = false;
+
 };
 
- void dry_run(bool enabled) {
-        _disable_build = enabled;
- }
 
 int AbstractCompiler::invoke(const Config &cfg, 
     const std::filesystem::path &workdir, 
@@ -250,7 +255,5 @@ std::filesystem::path AbstractCompiler::find_in_path(std::filesystem::path name,
         throw std::runtime_error("Unable to find executable: "+name.string());
     }
     return name;
-protected:
-    bool _disable_build = false;
 };
 

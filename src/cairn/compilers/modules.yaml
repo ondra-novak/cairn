@@ -1,5 +1,6 @@
 prefixes:
   cairn.compiler.clang: clang
   cairn.compiler.gcc: gcc
+  cairn.compiler.msvc: msvc
 
 

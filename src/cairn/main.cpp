@@ -6,7 +6,7 @@ import cairn.utils.arguments;
 import cairn.cli;
 import cairn.compiler.clang;
 import cairn.compiler.gcc;
-//import cairn.compiler.msvc;
+import cairn.compiler.msvc;
 import cairn.utils.log;
 import cairn.module_database;
 import cairn.source_scanner;
@@ -14,6 +14,9 @@ import cairn.module_type;
 import cairn.origin_env;
 import cairn.utils.threadpool;
 import cairn.compile_commands;
+import cairn.build_plan;
+import cairn.utils.utf8;
+import cairn.module_resolver;
 import <vector>;
 import <exception>;
 import <filesystem>;
@@ -22,9 +25,11 @@ import <memory>;
 import <fstream>;
 import <system_error>;
 import <unordered_set>;
+import <unordered_map>;
 import <map>;
 import <algorithm>;
 import <iostream>;
+import <thread>;
 
 
 static constexpr auto gcc_type_1 = ArgumentConstant("gcc");
@@ -320,7 +325,7 @@ int tmain(int argc, ArgumentString::value_type *argv[]) {
             compiler->dry_run(true);
             ThreadPool tp;
             tp.start(1);
-            Builder::build(tp, mplan, true).get();
+            Builder::build(tp, mplan, true);
             generate_makefile(mplan, settings.generate_makefile);            
             return 0;
         }

@@ -14,6 +14,9 @@ files
   - module_database.cpp
   - module_resolver.cpp
   - module_resolver.ifc.cpp
+  - preprocess.cpp
+  - preprocess.ifc.cpp
+  - gnu_compiler_setup.cpp
 prefixes:
   cairn.utils: utils
   cairn.compiler: compilers

@@ -1,13 +1,19 @@
-#include "preprocess.hpp"
-#include "utils/arguments.hpp"
-#include "utils/process.hpp"
-#include "utils/thread_pool.hpp"
-#include <filesystem>
-#include <iterator>
-#include <sstream>
-#include <vector>
+export module cairn.gnu_compiler_setup;
 
-inline  std::vector<std::filesystem::path> extract_include_path(std::string text, const std::filesystem::path working_dir) {    
+import cairn.preprocess;
+import cairn.utils.threadpool;
+import cairn.utils.arguments;
+import cairn.utils.process;
+import cairn.utils.utf8;
+import <vector>;
+import <atomic>;
+import <string>;
+import <filesystem>;
+import <span>;
+import <optional>;
+
+
+export inline  std::vector<std::filesystem::path> extract_include_path(std::string text, const std::filesystem::path working_dir) {    
     std::vector<std::filesystem::path> res;
 
     std::string ln;
@@ -32,7 +38,7 @@ inline  std::vector<std::filesystem::path> extract_include_path(std::string text
 
 
 
-inline StupidPreprocessor initialize_preprocesor_using_gnu_compiler(std::filesystem::path program_path, ThreadPool &tp) {
+export inline StupidPreprocessor initialize_preprocesor_using_gnu_compiler(std::filesystem::path program_path, ThreadPool &tp) {
 
     std::vector<ArgumentString> args;
     auto curdir =std::filesystem::current_path();
@@ -71,7 +77,7 @@ static constexpr auto preproc_include_directory = ArgumentConstant("--include-di
 
 
 
-inline std::string run_preprocess(StupidPreprocessor &preproc,
+export inline std::string run_preprocess(StupidPreprocessor &preproc,
          std::span<const ArgumentString> args,
          const std::filesystem::path &workdir,
          const std::filesystem::path &file)  {
