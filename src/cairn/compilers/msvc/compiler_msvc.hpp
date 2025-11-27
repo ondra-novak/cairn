@@ -1,5 +1,4 @@
 #pragma once
-#ifdef _WIN32
 #include "../../abstract_compiler.hpp"
 #include "../../utils/arguments.hpp"
 #include "../../utils/env.hpp"
@@ -88,4 +87,3 @@ protected:
 
     void create_macro_summary_file(const std::filesystem::path &target);
 };
-#endif

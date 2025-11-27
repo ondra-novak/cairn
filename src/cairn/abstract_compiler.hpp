@@ -3,7 +3,6 @@
 #include "module_type.hpp"
 #include "origin_env.hpp"
 #include "utils/arguments.hpp"
-#include "utils/which.hpp"
 #include "scanner.hpp"
 #include "source_def.hpp"
 #include <filesystem>

@@ -1,6 +1,16 @@
+#include "abstract_compiler.hpp"
+#include "utils/env.hpp"
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <ShlObj.h>
+#undef interface
+#endif
+
+
 #include "factory.hpp"
 
-#ifdef _WIN32
+
 #include "compiler_msvc.hpp"
 #include "../../utils/log.hpp"
 #include "../../utils/utf_8.hpp"
@@ -9,11 +19,9 @@
 #include "../../utils/serialization_rules.hpp" // IWYU pragma: keep.
 #include "../../compile_commands_supp.hpp"
 #include <future>
-
 #include <stdexcept>
 #include <fstream>
-#include <ShlObj.h>
-#undef interface
+
 
 static constexpr auto preproc_D = ArgumentConstant("/D");
 static constexpr auto preproc_U = ArgumentConstant("/U");
@@ -25,6 +33,7 @@ static constexpr auto all_preproc = std::array<ArgumentStringView, 4>({
 });
 
 
+#ifdef _WIN32
 static std::filesystem::path findVsWhere()
 {
     wchar_t programFilesX86[MAX_PATH];
@@ -35,6 +44,13 @@ static std::filesystem::path findVsWhere()
 
     return p;
 }
+#else 
+static std::filesystem::path findVsWhere() {
+    auto env = SystemEnvironment::current();
+    return AbstractCompiler::find_in_path("vswhere.exe",env);
+}
+#endif
+
 
 CompilerMSVC::VariantSpec CompilerMSVC::parse_variant_spec(std::filesystem::path compiler_path) {
     auto fname = compiler_path.filename().string();
@@ -576,9 +592,3 @@ void CompilerMSVC::create_macro_summary_file(const std::filesystem::path &target
     }
 }
 
-#else 
-std::unique_ptr<AbstractCompiler> create_compiler_msvc( AbstractCompiler::Config ) {
-    throw std::runtime_error("Unsupported on this platform");
-}
-
-#endif
