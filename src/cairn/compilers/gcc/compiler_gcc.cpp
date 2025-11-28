@@ -269,3 +269,9 @@ void CompilerGcc::update_link_command(CompileCommandsTable &cc,
         cc.update(cc.record(_config.working_directory, {}, _config.program_path, std::move(args), output));
     }
 
+std::string CompilerGcc::preproc_for_test(const std::filesystem::path &file) const {
+    auto args = _config.compile_options;
+    auto preproc = _preproc;
+    return run_preprocess(preproc, args, std::filesystem::current_path(), file);
+
+ }

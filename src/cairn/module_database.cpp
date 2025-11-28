@@ -224,14 +224,10 @@ ModuleDatabase::Source ModuleDatabase::from_scanner(const std::filesystem::path 
     Source out;
     out.name = nfo.name;
     out.type = nfo.type;
-    for (const auto &r: nfo.required) {
-        if (r.type == ModuleType::system_header) {
-            out.references.push_back(Reference{r.type, r.name});
-        } else if (r.type == ModuleType::user_header) {
-            out.references.push_back(Reference{r.type, r.name});
-        } else {
-            out.references.push_back(Reference{r.type, r.name});
-        }
+    for (const auto &r: nfo.required) 
+        out.references.push_back(Reference{r.type, r.name});        
+    for (const auto &r: nfo.exported) {
+        out.exported.push_back(Reference{r.type, r.name});        
     }
     out.source_file = source_file;
     return out;

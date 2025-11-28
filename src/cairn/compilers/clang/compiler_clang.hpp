@@ -50,6 +50,8 @@ public:
     virtual void update_link_command(CompileCommandsTable &cc,  
                 std::span<const std::filesystem::path> objects, const std::filesystem::path &output) const override; 
 
+    virtual std::string preproc_for_test(const std::filesystem::path &file) const override;
+
 
     virtual SourceStatus source_status(ModuleType , const std::filesystem::path &file, std::filesystem::file_time_type tm) const override;
 protected:

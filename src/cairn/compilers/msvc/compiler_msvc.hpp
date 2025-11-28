@@ -3,6 +3,7 @@
 #include "../../utils/arguments.hpp"
 #include "../../utils/env.hpp"
 #include "../../utils/thread_pool.hpp"
+#include "../../preprocess.hpp"
 #include <vector>
 
 class CompilerMSVC: public AbstractCompiler {
@@ -55,6 +56,7 @@ public:
         }
     };
 
+    virtual std::string preproc_for_test(const std::filesystem::path &file) const override;
 
 protected:
 
@@ -63,8 +65,7 @@ protected:
     std::filesystem::path _module_cache_path;
     std::filesystem::path _object_cache_path;
     std::filesystem::path _env_cache_path;
-
-    mutable ThreadPool _helper;
+    StupidPreprocessor _preproc;
 
     bool load_environment_from_cache();
     void save_environment_to_cache();
@@ -86,4 +87,8 @@ protected:
         std::span<const ArgumentString> arguments) const;
 
     void create_macro_summary_file(const std::filesystem::path &target);
+    void initialize_preproc();
+
+    std::string run_preproc(std::span<const ArgumentString> args, std::filesystem::path workdir, std::filesystem::path file) const;
+
 };

@@ -102,6 +102,11 @@ void save_database_binary(const ModuleDatabase &db, const std::filesystem::path 
 
 }
 
+int run_just_preproc(AbstractCompiler &compiler, const std::filesystem::path &file) {    
+    std::cout << compiler.preproc_for_test(file) << std::endl;
+    return 0;
+}
+
 
 int run_just_scan(AbstractCompiler &compiler, const std::filesystem::path &file) {
 
@@ -283,6 +288,9 @@ int tmain(int argc, ArgumentString::value_type *argv[]) {
             return 1;
         }
 
+        if (!settings.preproc_file.empty()) {
+            return run_just_preproc(*compiler, settings.preproc_file);            
+        }
         if (!settings.scan_file.empty()) {
             return run_just_scan(*compiler, settings.scan_file);            
         }

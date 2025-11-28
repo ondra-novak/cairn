@@ -9,7 +9,7 @@
 #include <system_error>
 #include <unordered_set>
 #include <utility>
-
+#include "utils/log.hpp"
 
 
 template<typename Fn>
@@ -51,6 +51,12 @@ auto StupidPreprocessor::tokenizer(Fn &&fn) {
                     cur.content.push_back(cc);
                 } else if (std::isdigit(c)) {
                     return std::exchange(cur, Token{TokenType::number, {&cc,1}});
+                } else if ((c == 'L' || c == 'U') && (cur.type == TokenType::number || cur.type == TokenType::number_suffixed)) {
+                        cur.content.push_back(cc);
+                        cur.type = TokenType::number_suffixed;
+                } else if ((c == 'L' || c == 'U') && (cur.type == TokenType::xnumber || cur.type == TokenType::xnumber_suffixed)) {
+                        cur.content.push_back(cc);
+                        cur.type = TokenType::xnumber_suffixed;
                 } else {
                     return std::exchange(cur, Token{TokenType::identifier, {&cc,1}});
                 }
@@ -61,7 +67,7 @@ auto StupidPreprocessor::tokenizer(Fn &&fn) {
                 if (c == '+' || c == '-' || c=='!' || cur.type != TokenType::symbol) {                    
                     return std::exchange(cur, Token{TokenType::symbol, {&cc,1}});
                 } else {
-                    cur.content.push_back(c);
+                    cur.content.push_back(static_cast<char>(c));
                 }
             }
         }
@@ -183,7 +189,9 @@ static std::string_view trim(std::string_view x) {
     return x;
 }
 
-StupidPreprocessor::NextCommand StupidPreprocessor::run(const std::filesystem::path &cur_dir, std::istream &in, ScanMode mode, std::ostream &out) {
+StupidPreprocessor::NextCommand StupidPreprocessor::run(const std::filesystem::path &cur_dir, std::istream &in, ScanMode mode, std::ostream &out,
+    std::unordered_set<std::filesystem::path> &&disabled_includes) {
+
     auto src = remove_comments(unwrap_lines(stream_reader(in)));
     std::string ln;
     bool st;
@@ -207,7 +215,7 @@ StupidPreprocessor::NextCommand StupidPreprocessor::run(const std::filesystem::p
                 case Command::_elifdef: return {cmd, std::string(args)};
                 case Command::_define: if (mode != ScanMode::skip) parse_define(args);break;
                 case Command::_undef: if (mode != ScanMode::skip) parse_undef(args);break;
-                case Command::_include:if (mode != ScanMode::skip) parse_include(cur_dir, args);break;
+                case Command::_include:if (mode != ScanMode::skip) parse_include(cur_dir, args, std::move(disabled_includes));break;
                 case Command::_if: cond = parse_if(args);break;
                 case Command::_ifdef: cond = parse_ifdef(args);break;
                 case Command::_ifndef: cond = !parse_ifdef(args);break;
@@ -215,7 +223,7 @@ StupidPreprocessor::NextCommand StupidPreprocessor::run(const std::filesystem::p
             }
             if (cond.has_value()) {
                 bool res = *cond;
-                auto r  = run(cur_dir, in, res?mode:ScanMode::skip, out);
+                auto r  = run(cur_dir, in, res?mode:ScanMode::skip, out, std::move(disabled_includes));
                 while (r.cmd != Command::eof && r.cmd != Command::_endif) {
                     switch (r.cmd) {
                         case Command::_else:  res = !res;break;
@@ -224,7 +232,7 @@ StupidPreprocessor::NextCommand StupidPreprocessor::run(const std::filesystem::p
                         case Command::_elifndef: cond = !parse_ifdef(r.args);break;
                         default: cond = false; break;
                     }
-                    r  = run(cur_dir, in, res?mode:ScanMode::skip, out);
+                    r  = run(cur_dir, in, res?mode:ScanMode::skip, out, std::move(disabled_includes));
                 }
             }
         }
@@ -265,7 +273,8 @@ void StupidPreprocessor::parse_undef(std::string_view args){
     _context.erase(name.content);
     
 }
-void StupidPreprocessor::parse_include(const std::filesystem::path &cur_dir, std::string_view args){
+void StupidPreprocessor::parse_include(const std::filesystem::path &cur_dir, std::string_view args, 
+        std::unordered_set<std::filesystem::path> &&disabled_includes ){
     auto next_token = tokenizer_from_string(args);
     std::string path;
     next_token();   //drop begin;
@@ -294,11 +303,13 @@ void StupidPreprocessor::parse_include(const std::filesystem::path &cur_dir, std
         }
     }
 
-    std::ifstream file(final_path);
-    if (file.is_open()) {
-        std::ostringstream dummy;
-        run(final_path.parent_path(), file, ScanMode::collect, dummy);
-    }    
+    if (disabled_includes.insert(final_path).second) {
+        std::ifstream file(final_path);
+        if (file.is_open()) {
+            std::ostringstream dummy;
+            run(final_path.parent_path(), file, ScanMode::collect, dummy, std::move(disabled_includes));
+        }    
+    }
 }
 
 std::pair<long, StupidPreprocessor::Token> StupidPreprocessor::evaluate_oror(auto &&next_token) {
@@ -437,15 +448,15 @@ std::pair<long, StupidPreprocessor::Token> StupidPreprocessor::evaluate_unar(aut
     } 
     if (t.content == "(") {
         auto b = evaluate_oror(next_token);
-        auto t = b.second;
+        t = b.second;
         if (t.content == ")") b.second = fetch_next();
         return b;
     }
-    if (t.type == TokenType::number) {
+    if (t.type == TokenType::number || t.type == TokenType::number_suffixed) {
         auto l = std::strtol(t.content.c_str(), NULL,t.content.front() == '0'?8:10);
         return {l, fetch_next()};        
     }
-    if (t.type == TokenType::xnumber) {
+    if (t.type == TokenType::xnumber || t.type == TokenType::xnumber_suffixed) {
         auto l = std::strtol(t.content.c_str()+2, NULL,16);
         return {l, fetch_next()};        
     }
@@ -490,7 +501,7 @@ void StupidPreprocessor::preproc_line(Fn &&next_token, std::vector<Token> &token
                     while (u.type == TokenType::white) u = next_token();
                     Token v;                    
                     if (u.content == "(") {
-                        Token v = next_token();
+                        v = next_token();
                         while (v.type == TokenType::white) v = next_token();
                     } else {
                         std::swap(u,v);
@@ -579,11 +590,12 @@ void StupidPreprocessor::define_symbol(std::string symbol, std::string value) {
     std::vector<Token> stream;
     auto next_symbol = tokenizer_from_string(value);
     auto s = next_symbol();
-    auto ctx = _context[symbol];
+    auto &ctx = _context[symbol];
+    s = next_symbol();
     while (s.type != TokenType::eof) {
-        s = next_symbol();
         ctx.content.push_back(s);
-    }    
+        s = next_symbol();
+    }        
 }
 void StupidPreprocessor::undef_symbol(const std::string &symbol) {
     _context.erase(symbol);
@@ -593,7 +605,7 @@ std::string StupidPreprocessor::run(const std::filesystem::path &workdir, const 
     std::ostringstream out;
     std::ifstream indata(src_file);
     if (!indata) return {};
-    run(workdir, indata, ScanMode::copy, out);;
+    run(workdir, indata, ScanMode::copy, out, {});;
     return std::move(out).str();
 
 }

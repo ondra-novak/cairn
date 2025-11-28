@@ -7,7 +7,6 @@
 #undef interface
 #endif
 
-
 #include "factory.hpp"
 
 
@@ -27,6 +26,7 @@ static constexpr auto preproc_D = ArgumentConstant("/D");
 static constexpr auto preproc_U = ArgumentConstant("/U");
 static constexpr auto preproc_u = ArgumentConstant("/u");
 static constexpr auto preproc_I = ArgumentConstant("/I");
+static constexpr auto preproc_1 = ArgumentConstant("1");
 
 static constexpr auto all_preproc = std::array<ArgumentStringView, 4>({
     preproc_D, preproc_I, preproc_U, preproc_u
@@ -121,10 +121,9 @@ CompilerMSVC::CompilerMSVC(Config config): _config(std::move(config)) {
         _config.program_path = _config.program_path.parent_path()/n.substr(0,s);
     }
     _config.program_path = find_in_path(_config.program_path, _env_cache.env);
-    _helper.start(1);
 
     std::filesystem::path detect_macros = _config.working_directory/"defines.txt";
-    create_macro_summary_file(detect_macros);
+    initialize_preproc();
 
 }
 
@@ -189,50 +188,14 @@ void CompilerMSVC::update_link_command(CompileCommandsTable &cc,
 SourceScanner::Info CompilerMSVC::scan(const OriginEnv &env, const std::filesystem::path &file) const
 {
     auto args = prepare_args(env,_config,'/');
+    auto out = run_preproc(args, env.working_dir, file);
 
-    args.erase(std::remove_if(args.begin(), args.end(), [&,skip = false](const ArgumentString &s) mutable {
-        if (skip) {
-            skip = false;
-            return false;
-        }
-        auto f1 = std::find(all_preproc.begin(), all_preproc.end(), s);
-        if (f1 != all_preproc.end()) {
-            skip = true;
-            return false;
-        }
-        auto f2 = std::find_if(all_preproc.begin(), all_preproc.end(), [&](const ArgumentStringView &w) {
-            return s.starts_with(w);
-        });
-        return (f2 == all_preproc.end());
-    }), args.end());
-
-    append_arguments(args, {"/nologo", "/EP", "{}"}, {path_arg(file)});
-    auto proc = Process::spawn(_config.program_path, env.working_dir, args, Process::output_error, _env_cache.env);
-
-    std::promise<std::string> errprom;
-    _helper.push([&]() noexcept {
-        try {
-            std::string err((std::istreambuf_iterator<char>(*proc.stderr_stream)),
-                            std::istreambuf_iterator<char>());
-            errprom.set_value(std::move(err));
-        } catch (...) {
-            errprom.set_exception(std::current_exception());
-        }
-    });
-
-
-    std::string output(std::istreambuf_iterator<char>(*proc.stdout_stream), std::istreambuf_iterator<char>());
-    int status = proc.waitpid_status();
-    std::string err = errprom.get_future().get();
-    if (status != 0) {        
-        dump_failed_cmdline(_config, env.working_dir, args);
-        std::cerr << err << "\n";
-        return {};
-    }
-    auto info =  SourceScanner::scan_string(output);
-    for (auto &s: info.required) {
-        if (s.type == ModuleType::user_header) {
-            s.name = (env.working_dir/s.name).lexically_normal().string();
+    auto info =  SourceScanner::scan_string(out);
+    for (auto &r: std::initializer_list({&info.required, &info.exported})) {
+        for (auto &s: *r) {
+            if (s.type == ModuleType::user_header) {
+                s.name = (env.working_dir/s.name).lexically_normal().string();
+            }
         }
     }
     return info;
@@ -464,9 +427,6 @@ constexpr std::string_view all_compilers_macros[] = {
     "_CPPUNWIND",
     "_DEBUG",
     "_DLL",
-    "__FUNCDNAME__",
-    "__FUNCSIG__",
-    "__FUNCTION__",
     "_INTEGRAL_MAX_BITS",
     "__INTELLISENSE__",
     "_ISO_VOLATILE",
@@ -586,9 +546,96 @@ constexpr std::string_view all_compilers_macros[] = {
  };
 
 void CompilerMSVC::create_macro_summary_file(const std::filesystem::path &target) {
+    if (std::filesystem::exists(target)) return;
     std::ofstream out(target, std::ios::out|std::ios::trunc);
     for (auto &x: all_compilers_macros) {
-        out << "#ifdef " << x << "\n" << "\"" << x << "\" {" << x << "}\n#endif\n";
+        out << "#ifdef " << x << "\n" << x << "_m:" << x << "\n#endif\n";
     }
 }
 
+void CompilerMSVC::initialize_preproc() {
+    auto sumfile = _config.working_directory/"macros.txt";
+    create_macro_summary_file(sumfile);
+    auto args = _config.compile_options;
+    append_arguments(args, {"/nologo", "/EP", "/TP", "{}"}, {path_arg(sumfile)});
+    auto proc = Process::spawn(_config.program_path, _config.working_directory, args, Process::output_error, _env_cache.env);
+    auto &input = *proc.stdout_stream;
+    std::string ln;
+    while (!input.eof()) {
+        std::getline(input, ln);
+        while (!ln.empty() && std::isspace(ln.back())) ln.pop_back();
+        if (ln.empty()) continue;
+        auto sep = ln.find("_m:");
+        if (sep == ln.npos) continue;
+        auto name = ln.substr(0, sep);
+        auto value = ln.substr(sep+3);
+        _preproc.define_symbol(name, value);
+    }
+
+    auto r = _env_cache.env["INCLUDE"];
+    std::vector<std::filesystem::path> includes;
+    std::basic_string_view lst(r);
+    while (!lst.empty()) {
+        auto sep = lst.find(';');
+        if (sep == lst.npos) {
+            includes.push_back(std::filesystem::path(lst));
+            lst = {};
+        } else {
+            includes.push_back(std::filesystem::path(lst.substr(0,sep)));
+            lst = lst.substr(sep+1);
+        }
+    }
+    _preproc.append_includes(includes);
+}
+
+std::string CompilerMSVC::run_preproc(std::span<const ArgumentString> args, std::filesystem::path workdir, std::filesystem::path file) const {
+    auto preproc = _preproc;
+    int stg = 0;
+    for (ArgumentStringView x: args) {
+        if (x == preproc_D) {stg = 'd';continue;}
+        if (x == preproc_I) {stg = 'i';continue;}
+        if (x == preproc_U) {stg = 'u';continue;}
+        if (stg == 0) {
+            if (x.substr(0,preproc_D.size()) == preproc_D) {stg = 'd'; x = x.substr(0,preproc_D.size());}
+            if (x.substr(0,preproc_I.size()) == preproc_I) {stg = 'i'; x = x.substr(0,preproc_I.size());}
+            if (x.substr(0,preproc_U.size()) == preproc_U) {stg = 'u'; x = x.substr(0,preproc_U.size());}
+        }
+        switch (stg) {
+            case 'd':  {//define
+                ArgumentStringView key;
+                ArgumentStringView value;
+                auto sep = x.find('=');
+                if (sep == x.npos) {
+                    key = x;
+                    value = preproc_1;
+                } else {
+                    key = x.substr(0,sep);
+                    value = x.substr(sep+1);
+                }
+                std::string key_u;
+                std::string value_u;
+                to_utf8(key.begin(), key.end(), std::back_inserter(key_u));
+                to_utf8(value.begin(), value.end(), std::back_inserter(value_u));
+                preproc.define_symbol(key_u, value_u);
+                break;
+            }
+            case 'i': {//include
+                std::filesystem::path p = (workdir/x).lexically_normal();
+                preproc.append_includes(std::move(p));
+                break;
+            }
+            case 'u': {//undef
+                std::string key_u;
+                to_utf8(x.begin(), x.end(), std::back_inserter(key_u));
+                preproc.undef_symbol(key_u);
+                break;
+            }
+        }
+    }
+    return preproc.run(workdir, file);
+
+}
+
+std::string CompilerMSVC::preproc_for_test(const std::filesystem::path &file) const {
+    return run_preproc(_config.compile_options, std::filesystem::current_path(), file);
+}

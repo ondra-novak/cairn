@@ -12,6 +12,7 @@
 class SystemEnvironment;
 class CompileCommandsTable;
 
+
 class AbstractCompiler {
 public:
     
@@ -161,6 +162,8 @@ public:
     void dry_run(bool enabled) {
         _disable_build = enabled;
     }
+
+    virtual std::string preproc_for_test(const std::filesystem::path &file) const = 0;
 
 protected:
     bool _disable_build = false;
