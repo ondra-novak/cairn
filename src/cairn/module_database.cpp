@@ -671,9 +671,10 @@ bool ModuleDatabase::check_database_version(const std::filesystem::path &compile
     for (const auto &a: arguments) {
         h = hash_combine(h, hsh2(a));
     }
-    if (_hash_settings != h) {
+    std::uint32_t h32 = static_cast<std::uint32_t>(h);
+    if (_hash_settings != h32) {
         clear();
-        _hash_settings = h;
+        _hash_settings = h32;
         return false;
     }
     return true;

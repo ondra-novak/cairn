@@ -140,7 +140,7 @@ public:
         }
     }
 
-    class ParseError: std::exception {
+    class ParseError: public std::exception {
     public:
         virtual const char *what() const noexcept {return "json parse error";}
     };
@@ -185,13 +185,13 @@ protected:
         fn('"');
         for (auto x: s) {
             switch (x) {
-                case '\n': write_token(fn,"\\n");
-                case '\r': write_token(fn,"\\r");
-                case '\t': write_token(fn,"\\t");
-                case '\f': write_token(fn,"\\f");
-                case '\b': write_token(fn,"\\b");
-                case '\\': write_token(fn,"\\\\");
-                case '\"': write_token(fn,"\\\"");
+                case '\n': write_token(fn,"\\n");break;
+                case '\r': write_token(fn,"\\r");break;
+                case '\t': write_token(fn,"\\t");break;
+                case '\f': write_token(fn,"\\f");break;
+                case '\b': write_token(fn,"\\b");break;
+                case '\\': write_token(fn,"\\\\");break;
+                case '\"': write_token(fn,"\\\"");break;
                 default: 
                     if (x >= 0 && x < 32) {
                         char buff[6] = "\\u";
@@ -296,7 +296,7 @@ protected:
         int m = 0;
         auto cc = fn();
         int surg = 0;
-        while (cc && *cc!='"') {
+        while (cc && (*cc!='"' || m)) {
             char c = *cc;
             if (m == 0) {
                 if (c == '\\') m = -1;

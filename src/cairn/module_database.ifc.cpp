@@ -27,8 +27,8 @@ import <span>;
 export class ModuleDatabase {
 public:
 
-    static constexpr int file_magic = 0x0042444D;
-    static constexpr int file_version_nr = 1;
+    static constexpr std::uint32_t file_magic = 0x0042444D;
+    static constexpr std::uint32_t file_version_nr = 1;
 
     struct Reference {
         ModuleType type;
@@ -189,7 +189,7 @@ public:
 
     template<typename Me, typename Arch>
     static void serialize(Me &me, Arch &arch) {
-        int v = file_magic;
+        std::uint32_t v = file_magic;
         arch(v);
         if (v != file_magic) return;
         v = file_version_nr;
@@ -217,7 +217,7 @@ protected:
     FileIndex _fileIndex;
     ModuleIndex _moduleIndex;
     OriginMap _originMap;
-    std::size_t _hash_settings = 0;
+    std::uint32_t _hash_settings = 0;
     std::chrono::system_clock::time_point _modify_time; //time when database was modified
     std::chrono::system_clock::time_point _import_time = std::chrono::system_clock::now();   //time when database was imported
     mutable std::atomic<bool> _modified;     //database has been modified

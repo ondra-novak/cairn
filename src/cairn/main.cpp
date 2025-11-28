@@ -373,7 +373,11 @@ int tmain(int argc, ArgumentString::value_type *argv[]) {
         if (!settings.compile_commands_json.empty()) {
             Log::debug("Updating compile commands: {}", [&]{return settings.compile_commands_json.string();});
             CompileCommandsTable cctable;
-            cctable.load(settings.compile_commands_json);
+            try {
+                cctable.load(settings.compile_commands_json);
+            } catch (std::exception &e) {
+                Log::warning("Cannot load {}: {} - rebuilding", settings.compile_commands_json.string(), e.what());
+            }
             db.update_compile_commands(cctable, *compiler);
             cctable.save(settings.compile_commands_json);
         }

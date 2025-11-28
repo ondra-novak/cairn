@@ -2,4 +2,4 @@ export module cairn.version;
 
 import <string_view>;
 
-export constexpr std::string_view APP_VERSION = "fe7844f";
+export constexpr std::string_view APP_VERSION = "ea06ab2";

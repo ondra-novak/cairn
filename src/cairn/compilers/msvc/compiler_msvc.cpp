@@ -7,9 +7,23 @@ module;
 #undef interface
 #endif
 
-module cairn.compiles.msvc;
+#pragma comment(lib, "Shell32.lib")
+
+module cairn.compiler.msvc;
 
 import cairn.abstract_compiler;
+import cairn.preprocess;
+import cairn.utils.log;
+import cairn.utils.utf8;
+import cairn.utils.serializer;
+import cairn.utils.serializer.rules;
+import cairn.utils.process;
+
+import <fstream>;
+import <iostream>;
+import <string>;
+import <filesystem>;
+import <numeric>;
 
 class CompilerMSVC: public AbstractCompiler {
 public:
@@ -387,7 +401,8 @@ SystemEnvironment CompilerMSVC::capture_environment(std::string_view install_pat
 std::vector<ArgumentString> CompilerMSVC::build_arguments(const OriginEnv &env, const SourceDef &src, std::span<const SourceDef> modules, CompileResult &result) const
 {
     auto args = prepare_args(env,_config,'/');
-    append_arguments(args,{"/nologo","/ifcSearchDir","{}","/c"}, {path_arg(_module_cache_path)});
+    auto pdb = _object_cache_path/intermediate_file(src, ".pdb");
+    append_arguments(args,{"/nologo","/ifcSearchDir","{}","/Fd{}","/c"}, {path_arg(_module_cache_path), path_arg(pdb)});
     for (const auto &r : modules) {
         switch (r.type) {
             case ModuleType::system_header:
