@@ -11,6 +11,8 @@ import <string>;
 import <filesystem>;
 import <span>;
 import <optional>;
+import <unordered_map>;
+
 
 
 export inline  std::vector<std::filesystem::path> extract_include_path(std::string text, const std::filesystem::path working_dir) {    

@@ -27,6 +27,7 @@ import <memory>;
 import <array>;
 import <span>;
 import <optional>;
+import <unordered_map>;
 
 class CompilerClang : public AbstractCompiler {
 public:

@@ -1,5 +1,7 @@
 module;
 
+
+
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -7,11 +9,13 @@ module;
 #include <unistd.h>
 #endif
 
+#include "errno.h"
+#include "string.h"
+
+
 export module cairn.utils.fd_streambuf;
 import <streambuf>;
 import <vector>;
-import <cerrno>;
-import <cstring>;
 
 
 // Jednoduchý, přenositelný streambuf pro file descriptor
