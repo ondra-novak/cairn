@@ -220,14 +220,10 @@ ModuleDatabase::Source ModuleDatabase::from_scanner(const std::filesystem::path 
     Source out;
     out.name = nfo.name;
     out.type = nfo.type;
-    for (const auto &r: nfo.required) {
-        if (r.type == ModuleType::system_header) {
-            out.references.push_back(Reference{r.type, r.name});
-        } else if (r.type == ModuleType::user_header) {
-            out.references.push_back(Reference{r.type, r.name});
-        } else {
-            out.references.push_back(Reference{r.type, r.name});
-        }
+    for (const auto &r: nfo.required) 
+        out.references.push_back(Reference{r.type, r.name});        
+    for (const auto &r: nfo.exported) {
+        out.exported.push_back(Reference{r.type, r.name});        
     }
     out.source_file = source_file;
     return out;
@@ -389,7 +385,7 @@ ModuleDatabase::Unsatisfied ModuleDatabase::rescan_file(
 
 
 template<typename FnRanged>
-void ModuleDatabase::collect_bmi_references(PSource from, FnRanged &&ret) const {
+void ModuleDatabase::collect_bmi_references(PSource from, FnRanged &&ret, bool transitive_headers) const {
     std::unordered_set<PSource> result;
     std::queue<PSource> q;
     for (const auto &r: from->references) {
@@ -410,6 +406,15 @@ void ModuleDatabase::collect_bmi_references(PSource from, FnRanged &&ret) const 
             } else {
                 Log::error("Reference {} not found in database", r.name);
             }
+        }
+        if (transitive_headers) {
+            transitive_closure(from, [&](auto beg, auto end){
+                for (auto r: std::ranges::subrange(beg, end)) {
+                    if (is_header_module(r->type)) {
+                        result.emplace(r);
+                    }                
+                }
+            });
         }
     }
     result.erase(from);
@@ -552,7 +557,7 @@ BuildPlan<ModuleDatabase::CompileAction> ModuleDatabase::create_build_plan(
                     plan.add_dependency(tid, iter->second);
                 }
             }
-        });
+        }, compiler.transitive_headers());
     }
     return plan;
 }
@@ -567,7 +572,7 @@ auto ModuleDatabase::CompileAction::get_references(const PSource &f) const {
                 s->type, s->name, s->bmi_path
             });   
         }
-    });
+    }, compiler.transitive_headers());
     return references;
 }
 
@@ -648,7 +653,7 @@ void ModuleDatabase::extract_module_mapping(const BuildPlan<CompileAction> &plan
                             f->origin?f->origin->working_dir:std::filesystem::path()});                        
                     }                
                 }
-            });
+            },itm.action.compiler.transitive_headers());
         }
     }
 
@@ -689,7 +694,7 @@ void ModuleDatabase::update_compile_commands(CompileCommandsTable &cc, AbstractC
                     modules.push_back({f->type, f->name, f->bmi_path});
                 }
             }            
-        });
+        }, compiler.transitive_headers());
         compiler.update_compile_commands(cc, *f->origin, 
             {f->type, f->name, f->source_file},
             modules);            

@@ -110,6 +110,11 @@ void save_database_binary(const ModuleDatabase &db, const std::filesystem::path 
 
 }
 
+int run_just_preproc(AbstractCompiler &compiler, const std::filesystem::path &file) {    
+    std::cout << compiler.preproc_for_test(file) << std::endl;
+    return 0;
+}
+
 
 int run_just_scan(AbstractCompiler &compiler, const std::filesystem::path &file) {
 
@@ -291,6 +296,9 @@ int tmain(int argc, ArgumentString::value_type *argv[]) {
             return 1;
         }
 
+        if (!settings.preproc_file.empty()) {
+            return run_just_preproc(*compiler, settings.preproc_file);            
+        }
         if (!settings.scan_file.empty()) {
             return run_just_scan(*compiler, settings.scan_file);            
         }
@@ -349,6 +357,9 @@ int tmain(int argc, ArgumentString::value_type *argv[]) {
 
         auto threads = settings.threads;
         if (threads == 0) threads = std::thread::hardware_concurrency();
+        auto paral = plan.computeMaxParallelism(plan);
+        threads = std::min(paral,threads);
+        Log::debug("Using threads {}", threads);
 
         compiler->prepare_for_build();
         bool use_build_system = compiler->initialize_build_system({threads, settings.keep_going});

@@ -88,6 +88,48 @@ public:
     auto end() const {return _items.end();}
     auto get_plan() const {return std::span<const Item>(_items);}
 
+    static unsigned int computeMaxParallelism(const BuildPlan& plan)
+    {
+        auto &items = plan._items;
+        unsigned int n = static_cast<unsigned int>(items.size());
+        std::vector<unsigned int> indegree(n, 0);
+        std::vector<std::vector<unsigned int>> graph(n);
+
+        // Build graph + indegree count
+        for (unsigned int i = 0; i < n; ++i) {
+            for (auto dep : items[i].dependencies) {
+                graph[dep].push_back(i);    // dep → i
+                indegree[i]++;             // i depends on dep
+            }
+        }
+
+        // Queue of tasks ready to run
+        std::queue<unsigned int> q;
+        for (unsigned int i = 0; i < n; ++i)
+            if (indegree[i] == 0)
+                q.push(i);
+
+        unsigned int maxParallel = 0;
+
+        while (!q.empty()) {
+            unsigned int levelSize = static_cast<unsigned int>(q.size());     // number of tasks runnable now
+            maxParallel = std::max(maxParallel, levelSize);
+
+            // Process whole "level"
+            for (unsigned int k = 0; k < levelSize; ++k) {
+                unsigned int u = q.front();
+                q.pop();
+
+                for (auto v : graph[u]) {
+                    if (--indegree[v] == 0)
+                        q.push(v);
+                }
+            }
+        }
+
+        return maxParallel;
+    }
+
 protected:
 
     std::vector<Item> _items;

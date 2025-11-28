@@ -92,7 +92,7 @@ SystemEnvironment SystemEnvironment::current() {
 
 SystemEnvironment SystemEnvironment::parse(std::string_view data)
 {
-    SystemEnvironment env = SystemEnvironment::current();
+    SystemEnvironment env;
     #ifdef _WIN32
     // parse SET output format
     // convert to wstring
