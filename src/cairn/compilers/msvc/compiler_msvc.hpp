@@ -41,7 +41,7 @@ public:
             arch(me.architecture, me.compiler_version);
         }
 
-    };
+  };
 
     virtual SourceStatus source_status(ModuleType t, const std::filesystem::path &file, 
         std::filesystem::file_time_type tm) const override;
@@ -58,6 +58,7 @@ public:
 
     virtual std::string preproc_for_test(const std::filesystem::path &file) const override;
 
+    virtual bool transitive_headers() const {return true;}
 protected:
 
     Config _config;

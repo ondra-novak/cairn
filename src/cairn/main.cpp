@@ -349,6 +349,9 @@ int tmain(int argc, ArgumentString::value_type *argv[]) {
 
         auto threads = settings.threads;
         if (threads == 0) threads = std::thread::hardware_concurrency();
+        auto paral = plan.computeMaxParallelism(plan);
+        threads = std::min(paral,threads);
+        Log::debug("Using threads {}", threads);
 
         compiler->prepare_for_build();
         bool use_build_system = compiler->initialize_build_system({threads, settings.keep_going});

@@ -95,7 +95,7 @@ CompilerMSVC::CompilerMSVC(Config config): _config(std::move(config)) {
         } else {
             auto install_path = get_install_path(spec.compiler_version);
             _env_cache.env = capture_environment(install_path.string(), spec.architecture);
-            Log::debug("MSVC: Configured for: {}, version: {}",  spec.architecture, [&]{
+            Log::verbose("MSVC: Configured for: {}, version: {}",  spec.architecture, [&]{
                 return std::filesystem::path(_env_cache.env["VSCMD_VER"]).string();});            
             _env_cache.variant = spec;
             save_environment_to_cache();
@@ -288,9 +288,12 @@ SystemEnvironment CompilerMSVC::capture_environment(std::string_view install_pat
 //    auto callArg = std::format(L"call \"{}\" {} && set", vcvarsall.wstring(), string_arg(arch));
 
     std::vector<ArgumentString> args;
-    append_arguments(args, {"/C", "call","{}","{}","&&","set"}, {path_arg(vcvarsall), string_arg(arch)});
+    append_arguments(args, {"/k", "call","{}","{}"}, {path_arg(vcvarsall), string_arg(arch)});
 
-    auto proc = Process::spawn("cmd.exe", std::filesystem::current_path(), args, Process::output);
+    auto proc = Process::spawn("cmd.exe", std::filesystem::current_path(), args, Process::input_output);
+    (*proc.stdin_stream) << "set" << std::endl;
+    proc.stdin_stream.reset();
+    proc.child_stdin_buf.reset();
     SystemEnvironment env;
     {
         std::string env_data {std::istreambuf_iterator<char>(*proc.stdout_stream), std::istreambuf_iterator<char>()};
@@ -375,8 +378,9 @@ int CompilerMSVC::invoke(const std::filesystem::path &workdir,
     Process p = Process::spawn(_config.program_path, workdir, arguments, Process::output, _env_cache.env);
     std::string dummy(std::istreambuf_iterator<char>(*p.stdout_stream), std::istreambuf_iterator<char>());
     int r =  p.waitpid_status();
-    if (r) {
-        std::cerr << dummy << std::endl;
+    int lines =std::accumulate(dummy.begin(), dummy.end(), 0, [](int a, char c){return a+(c == '\n'?1:0);});
+    if (lines > 1) {    //attempt to remove filename from output
+        Log::verbose("{}", dummy);   //any larger output is displayed
     }
     return r;
 

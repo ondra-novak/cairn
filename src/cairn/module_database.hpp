@@ -231,8 +231,11 @@ protected:
 
     ///collects all bmis required to compile source "from"
     template<typename FnRanged>
-    void collect_bmi_references(PSource from, FnRanged &&ret) const;
+    void collect_bmi_references(PSource from, FnRanged &&ret, bool transitive_headers) const;
     
+
+
+
     static Unsatisfied merge_references(Unsatisfied a1, Unsatisfied a2);
   
 

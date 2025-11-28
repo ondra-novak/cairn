@@ -165,6 +165,9 @@ public:
 
     virtual std::string preproc_for_test(const std::filesystem::path &file) const = 0;
 
+    ///compiler requires to include header transitive (MSVC)
+    virtual bool transitive_headers() const {return false;}
+
 protected:
     bool _disable_build = false;
 };
