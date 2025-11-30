@@ -61,7 +61,7 @@ public:
     };
 
     NextCommand run(const std::filesystem::path &cur_dir, std::istream &in, ScanMode mode, std::ostream &out, 
-        std::unordered_set<std::filesystem::path> &&disabled_includes);
+        std::unordered_set<std::filesystem::path> &&disabled_includes = {});
 
 
     std::string run(const std::filesystem::path &workdir, const std::filesystem::path &src_file);

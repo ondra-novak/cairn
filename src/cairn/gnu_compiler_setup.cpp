@@ -65,7 +65,7 @@ export inline StupidPreprocessor initialize_preprocesor_using_gnu_compiler(std::
     preproc.append_includes(paths);
     std::istringstream instr(outstr);
     std::ostringstream dummy;
-    preproc.run(curdir, instr, StupidPreprocessor::ScanMode::collect, dummy, {});
+    preproc.run(curdir, instr, StupidPreprocessor::ScanMode::collect, dummy);
     return preproc;
 }   
 

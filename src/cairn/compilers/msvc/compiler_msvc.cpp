@@ -18,12 +18,22 @@ import cairn.utils.utf8;
 import cairn.utils.serializer;
 import cairn.utils.serializer.rules;
 import cairn.utils.process;
+import cairn.origin_env;
+import cairn.source_def;
+import cairn.source_scanner;
+import cairn.compile_commands;
+import cairn.module_type;
+import cairn.utils.env;
+import cairn.utils.arguments;
 
 import <fstream>;
 import <iostream>;
 import <string>;
 import <filesystem>;
 import <numeric>;
+import <vector>;
+import <map>;
+import <unordered_map>;
 
 class CompilerMSVC: public AbstractCompiler {
 public:
@@ -77,7 +87,7 @@ public:
 
     virtual std::string preproc_for_test(const std::filesystem::path &file) const override;
 
-    virtual bool transitive_headers() const {return true;}
+    virtual bool transitive_headers() const override {return true;}
 protected:
 
     Config _config;
@@ -120,9 +130,6 @@ static constexpr auto preproc_u = ArgumentConstant("/u");
 static constexpr auto preproc_I = ArgumentConstant("/I");
 static constexpr auto preproc_1 = ArgumentConstant("1");
 
-static constexpr auto all_preproc = std::array<ArgumentStringView, 4>({
-    preproc_D, preproc_I, preproc_U, preproc_u
-});
 
 
 #ifdef _WIN32
@@ -283,7 +290,7 @@ SourceScanner::Info CompilerMSVC::scan(const OriginEnv &env, const std::filesyst
     auto out = run_preproc(args, env.working_dir, file);
 
     auto info =  SourceScanner::scan_string(out);
-    for (auto &r: std::initializer_list({&info.required, &info.exported})) {
+    for (auto &r: std::initializer_list<std::vector<SourceScanner::Reference> *>({&info.required, &info.exported})) {
         for (auto &s: *r) {
             if (s.type == ModuleType::user_header) {
                 s.name = (env.working_dir/s.name).lexically_normal().string();
@@ -692,10 +699,12 @@ std::string CompilerMSVC::run_preproc(std::span<const ArgumentString> args, std:
         if (x == preproc_D) {stg = 'd';continue;}
         if (x == preproc_I) {stg = 'i';continue;}
         if (x == preproc_U) {stg = 'u';continue;}
+        if (x == preproc_u) {stg = 'u';continue;}
         if (stg == 0) {
             if (x.substr(0,preproc_D.size()) == preproc_D) {stg = 'd'; x = x.substr(0,preproc_D.size());}
             if (x.substr(0,preproc_I.size()) == preproc_I) {stg = 'i'; x = x.substr(0,preproc_I.size());}
             if (x.substr(0,preproc_U.size()) == preproc_U) {stg = 'u'; x = x.substr(0,preproc_U.size());}
+            if (x.substr(0,preproc_u.size()) == preproc_u) {stg = 'u'; x = x.substr(0,preproc_u.size());}
         }
         switch (stg) {
             case 'd':  {//define

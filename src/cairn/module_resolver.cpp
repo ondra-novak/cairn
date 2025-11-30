@@ -1,5 +1,7 @@
 module;
+#ifdef _WIN32
 #include <fkyaml.hpp>
+#endif
 
 module cairn.module_resolver;
 import <cctype>;
@@ -12,6 +14,9 @@ import <system_error>;
 import cairn.utils.hash;
 import cairn.utils.log;
 import cairn.utils.utf8;
+#ifndef _WIN32
+import <fkyaml.hpp>;
+#endif
 
 
 std::string_view ModuleResolver::modules_yaml = "modules.yaml";
