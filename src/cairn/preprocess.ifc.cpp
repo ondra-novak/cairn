@@ -8,6 +8,7 @@ import <optional>;
 import <unordered_map>;
 import <unordered_set>;
 import <algorithm>;
+import <array>;
 
 
 export class StupidPreprocessor {
@@ -59,7 +60,8 @@ public:
         std::string args;
     };
 
-    NextCommand run(const std::filesystem::path &cur_dir, std::istream &in, ScanMode mode, std::ostream &out);
+    NextCommand run(const std::filesystem::path &cur_dir, std::istream &in, ScanMode mode, std::ostream &out, 
+        std::unordered_set<std::filesystem::path> &&disabled_includes);
 
 
     std::string run(const std::filesystem::path &workdir, const std::filesystem::path &src_file);
@@ -75,6 +77,8 @@ protected:
         identifier,         //identifier
         number,
         xnumber,
+        number_suffixed,
+        xnumber_suffixed,
         string,
         symbol,       //one symbol
         white         //whitespace
@@ -109,7 +113,8 @@ protected:
 
     void parse_define(std::string_view args);
     void parse_undef(std::string_view args);
-    void parse_include(const std::filesystem::path &cur_dir, std::string_view args);
+    void parse_include(const std::filesystem::path &cur_dir, std::string_view args, 
+        std::unordered_set<std::filesystem::path> &&disabled_includes);
     bool parse_if(std::string_view args);
     bool parse_ifdef(std::string_view args);
 

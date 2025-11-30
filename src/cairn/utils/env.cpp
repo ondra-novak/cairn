@@ -1,6 +1,7 @@
 module;
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
 #include <windows.h>
 #else
 #include <unistd.h>
@@ -91,7 +92,7 @@ SystemEnvironment SystemEnvironment::current() {
 
 SystemEnvironment SystemEnvironment::parse(std::string_view data)
 {
-    SystemEnvironment env = SystemEnvironment::current();
+    SystemEnvironment env;
     #ifdef _WIN32
     // parse SET output format
     // convert to wstring

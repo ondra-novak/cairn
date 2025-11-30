@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.28)
 project(cairn)
 
 include_directories(${CMAKE_BINARY_DIR})
@@ -28,17 +28,35 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 if(MSVC)
+<<<<<<< HEAD
     set(COMPILE_FLAGS /W4 /D_CRT_SECURE_NO_WARNINGS /DNOMINMAX /EHsc /std:c++20)
+=======
+    set(COMPILE_FLAGS /W4 /EHsc /std:c++20)
+>>>>>>> 787117031882e77ed94c4090ba3cfb4671cb698a
 else()
     set(COMPILE_FLAGS -Wall -Wextra -Wpedantic -std=c++20)
 endif()
 
-include_directories(BEFORE src/json/src)
+separate_arguments(FLAGS_DEBUG NATIVE_COMMAND ${CMAKE_CXX_FLAGS_DEBUG})
+separate_arguments(FLAGS_RELEASE NATIVE_COMMAND ${CMAKE_CXX_FLAGS_RELEASE})
+separate_arguments(FLAGS_RELWITHDEBINFO NATIVE_COMMAND ${CMAKE_CXX_FLAGS_RELWITHDEBINFO})
+separate_arguments(FLAGS_MINSIZEREL NATIVE_COMMAND ${CMAKE_CXX_FLAGS_MINSIZEREL})
+
 
 add_custom_target(cairn ALL
+<<<<<<< HEAD
     COMMAND /home/ondra/vscode/modbuilder/build/bin/cairn 
         -j0 -b${CMAKE_BINARY_DIR}
         -c${CMAKE_BINARY_DIR}/compile_commands.json 
         build/cairn=src/cairn/main.cpp 
         ${CMAKE_CXX_COMPILER} ${COMPILE_FLAGS}
     WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR})
+=======
+    COMMAND ${CMAKE_CURRENT_LIST_DIR}/.install/cairn 
+        -j0 -b${CMAKE_BINARY_DIR}
+        -c${CMAKE_BINARY_DIR}/compile_commands.json 
+        build/cairn=src/cairn/main.cpp 
+        ${CMAKE_CXX_COMPILER} ${COMPILE_FLAGS} ${FLAGS_RELEASE}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+    COMMAND_EXPAND_LISTS   )
+>>>>>>> 787117031882e77ed94c4090ba3cfb4671cb698a

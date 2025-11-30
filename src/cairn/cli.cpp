@@ -26,6 +26,7 @@ export struct AppSettings {
     std::vector<CompileTarget> targets = {};
     std::filesystem::path scan_file = {};
     std::filesystem::path generate_makefile = {};
+    std::filesystem::path preproc_file = {};
     unsigned int threads = 1;
     Mode mode = compile_and_link;
     bool show_help = false;
@@ -133,9 +134,15 @@ modules. All subdirectories used for mapping, wher name of directory is used as 
 Special usage:
 ==============
 
-cairn --scan <file.cpp> <compiler> <flags>
+cairn --scan <file.cpp> <compiler> <flags>  - run scanner for this file, 
+                                              output result to stdout     
+                                              (for testing)
 
-run scanner for this file, output result to stdout
+cairn --preproc <file.cpp> <compiler> <flags> - run internal preprocessor
+                                                output result to stdout 
+                                                (for testing)
+
+
 
 )help";
 
@@ -160,6 +167,9 @@ bool parse_cmdline(AppSettings &settings, CliReader<ArgumentString::value_type> 
         if (p.is_long_sw) {
             if (ArgumentStringView(p.long_sw) == ArgumentConstant("scan") ) {
                 settings.scan_file = (curdir/cli.text()).lexically_normal();
+                break;
+            } else if (ArgumentStringView(p.long_sw) == ArgumentConstant("preproc")) {
+                settings.preproc_file = (curdir/cli.text()).lexically_normal();
                 break;
             } else if (ArgumentStringView(p.long_sw) == ArgumentConstant("list")) {
                 settings.list = true;                

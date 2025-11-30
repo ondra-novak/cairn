@@ -1,32 +1,124 @@
-#include "abstract_compiler.hpp"
-#include "utils/env.hpp"
+module;
 #ifdef _WIN32
+#define DNOMINMAX
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <ShlObj.h>
 #undef interface
 #endif
 
+#pragma comment(lib, "Shell32.lib")
 
-#include "factory.hpp"
+module cairn.compiler.msvc;
+
+import cairn.abstract_compiler;
+import cairn.preprocess;
+import cairn.utils.log;
+import cairn.utils.utf8;
+import cairn.utils.serializer;
+import cairn.utils.serializer.rules;
+import cairn.utils.process;
+
+import <fstream>;
+import <iostream>;
+import <string>;
+import <filesystem>;
+import <numeric>;
+
+class CompilerMSVC: public AbstractCompiler {
+public:
+
+    CompilerMSVC(Config config);
+    virtual std::string_view get_compiler_name() const override {
+        return "msvc";
+    }
+    virtual void prepare_for_build() override;
+    virtual int compile(
+        const OriginEnv &env,
+        const SourceDef &src,
+        std::span<const SourceDef> modules,
+        CompileResult &result) const override;
+    virtual int link(std::span<const std::filesystem::path> objects, const std::filesystem::path &target) const override;
+    virtual SourceScanner::Info scan(const OriginEnv &env, const std::filesystem::path &file) const override;
+    virtual void update_compile_commands(CompileCommandsTable &cc,  const OriginEnv &env, 
+                const SourceDef &src, std::span<const SourceDef> modules) const  override;
+    virtual void update_link_command(CompileCommandsTable &cc,  
+                std::span<const std::filesystem::path> objects, const std::filesystem::path &output) const override;
 
 
-#include "compiler_msvc.hpp"
-#include "../../utils/log.hpp"
-#include "../../utils/utf_8.hpp"
-#include "../../utils/process.hpp"
-#include "../../utils/serializer.hpp"
-#include "../../utils/serialization_rules.hpp" // IWYU pragma: keep.
-#include "../../compile_commands_supp.hpp"
-#include <future>
-#include <stdexcept>
-#include <fstream>
+    virtual bool initialize_build_system(BuildSystemConfig ) override;
+    virtual bool commit_build_system() override;
+    virtual void initialize_module_map(std::span<const ModuleMapping> ) override {}
+
+    struct VariantSpec {
+        std::string architecture;
+        std::string compiler_version;
+        bool operator==(const VariantSpec &other) const  = default;
+
+        template<typename Me, typename Arch>
+        static void serialize(Me &me, Arch &arch) {
+            arch(me.architecture, me.compiler_version);
+        }
+
+  };
+
+    virtual SourceStatus source_status(ModuleType t, const std::filesystem::path &file, 
+        std::filesystem::file_time_type tm) const override;
+
+    struct EnvironmentCache {
+        VariantSpec variant;
+        SystemEnvironment env;
+
+        template<typename Me, typename Arch>
+        static void serialize(Me &me, Arch &arch) {
+            arch(me.variant, me.env);
+        }
+    };
+
+    virtual std::string preproc_for_test(const std::filesystem::path &file) const override;
+
+    virtual bool transitive_headers() const {return true;}
+protected:
+
+    Config _config;
+    EnvironmentCache _env_cache;
+    std::filesystem::path _module_cache_path;
+    std::filesystem::path _object_cache_path;
+    std::filesystem::path _env_cache_path;
+    StupidPreprocessor _preproc;
+
+    bool load_environment_from_cache();
+    void save_environment_to_cache();
+    static std::filesystem::path get_install_path(std::string_view version_spec);
+    static SystemEnvironment capture_environment(std::string_view install_path, std::string_view arch);
+  
+    static VariantSpec parse_variant_spec(std::filesystem::path compiler_path);
+    std::vector<ArgumentString> build_arguments(
+        const OriginEnv &env,
+        const SourceDef &src,
+        std::span<const SourceDef> modules,
+        CompileResult &result) const;
+
+
+    static std::string map_module_name(const std::string_view &name);
+
+    int invoke( 
+        const std::filesystem::path &workdir, 
+        std::span<const ArgumentString> arguments) const;
+
+    void create_macro_summary_file(const std::filesystem::path &target);
+    void initialize_preproc();
+
+    std::string run_preproc(std::span<const ArgumentString> args, std::filesystem::path workdir, std::filesystem::path file) const;
+
+};
 
 
 static constexpr auto preproc_D = ArgumentConstant("/D");
 static constexpr auto preproc_U = ArgumentConstant("/U");
 static constexpr auto preproc_u = ArgumentConstant("/u");
 static constexpr auto preproc_I = ArgumentConstant("/I");
+static constexpr auto preproc_1 = ArgumentConstant("1");
 
 static constexpr auto all_preproc = std::array<ArgumentStringView, 4>({
     preproc_D, preproc_I, preproc_U, preproc_u
@@ -95,7 +187,7 @@ CompilerMSVC::CompilerMSVC(Config config): _config(std::move(config)) {
         } else {
             auto install_path = get_install_path(spec.compiler_version);
             _env_cache.env = capture_environment(install_path.string(), spec.architecture);
-            Log::debug("MSVC: Configured for: {}, version: {}",  spec.architecture, [&]{
+            Log::verbose("MSVC: Configured for: {}, version: {}",  spec.architecture, [&]{
                 return std::filesystem::path(_env_cache.env["VSCMD_VER"]).string();});            
             _env_cache.variant = spec;
             save_environment_to_cache();
@@ -121,10 +213,9 @@ CompilerMSVC::CompilerMSVC(Config config): _config(std::move(config)) {
         _config.program_path = _config.program_path.parent_path()/n.substr(0,s);
     }
     _config.program_path = find_in_path(_config.program_path, _env_cache.env);
-    _helper.start(1);
 
     std::filesystem::path detect_macros = _config.working_directory/"defines.txt";
-    create_macro_summary_file(detect_macros);
+    initialize_preproc();
 
 }
 
@@ -189,50 +280,14 @@ void CompilerMSVC::update_link_command(CompileCommandsTable &cc,
 SourceScanner::Info CompilerMSVC::scan(const OriginEnv &env, const std::filesystem::path &file) const
 {
     auto args = prepare_args(env,_config,'/');
+    auto out = run_preproc(args, env.working_dir, file);
 
-    args.erase(std::remove_if(args.begin(), args.end(), [&,skip = false](const ArgumentString &s) mutable {
-        if (skip) {
-            skip = false;
-            return false;
-        }
-        auto f1 = std::find(all_preproc.begin(), all_preproc.end(), s);
-        if (f1 != all_preproc.end()) {
-            skip = true;
-            return false;
-        }
-        auto f2 = std::find_if(all_preproc.begin(), all_preproc.end(), [&](const ArgumentStringView &w) {
-            return s.starts_with(w);
-        });
-        return (f2 == all_preproc.end());
-    }), args.end());
-
-    append_arguments(args, {"/nologo", "/EP", "{}"}, {path_arg(file)});
-    auto proc = Process::spawn(_config.program_path, env.working_dir, args, Process::output_error, _env_cache.env);
-
-    std::promise<std::string> errprom;
-    _helper.push([&]() noexcept {
-        try {
-            std::string err((std::istreambuf_iterator<char>(*proc.stderr_stream)),
-                            std::istreambuf_iterator<char>());
-            errprom.set_value(std::move(err));
-        } catch (...) {
-            errprom.set_exception(std::current_exception());
-        }
-    });
-
-
-    std::string output(std::istreambuf_iterator<char>(*proc.stdout_stream), std::istreambuf_iterator<char>());
-    int status = proc.waitpid_status();
-    std::string err = errprom.get_future().get();
-    if (status != 0) {        
-        dump_failed_cmdline(_config, env.working_dir, args);
-        std::cerr << err << "\n";
-        return {};
-    }
-    auto info =  SourceScanner::scan_string(output);
-    for (auto &s: info.required) {
-        if (s.type == ModuleType::user_header) {
-            s.name = (env.working_dir/s.name).lexically_normal().string();
+    auto info =  SourceScanner::scan_string(out);
+    for (auto &r: std::initializer_list({&info.required, &info.exported})) {
+        for (auto &s: *r) {
+            if (s.type == ModuleType::user_header) {
+                s.name = (env.working_dir/s.name).lexically_normal().string();
+            }
         }
     }
     return info;
@@ -325,9 +380,12 @@ SystemEnvironment CompilerMSVC::capture_environment(std::string_view install_pat
 //    auto callArg = std::format(L"call \"{}\" {} && set", vcvarsall.wstring(), string_arg(arch));
 
     std::vector<ArgumentString> args;
-    append_arguments(args, {"/C", "call","{}","{}","&&","set"}, {path_arg(vcvarsall), string_arg(arch)});
+    append_arguments(args, {"/k", "call","{}","{}"}, {path_arg(vcvarsall), string_arg(arch)});
 
-    auto proc = Process::spawn("cmd.exe", std::filesystem::current_path(), args, Process::output);
+    auto proc = Process::spawn("cmd.exe", std::filesystem::current_path(), args, Process::input_output);
+    (*proc.stdin_stream) << "set" << std::endl;
+    proc.stdin_stream.reset();
+    proc.child_stdin_buf.reset();
     SystemEnvironment env;
     {
         std::string env_data {std::istreambuf_iterator<char>(*proc.stdout_stream), std::istreambuf_iterator<char>()};
@@ -343,7 +401,8 @@ SystemEnvironment CompilerMSVC::capture_environment(std::string_view install_pat
 std::vector<ArgumentString> CompilerMSVC::build_arguments(const OriginEnv &env, const SourceDef &src, std::span<const SourceDef> modules, CompileResult &result) const
 {
     auto args = prepare_args(env,_config,'/');
-    append_arguments(args,{"/nologo","/ifcSearchDir","{}","/c"}, {path_arg(_module_cache_path)});
+    auto pdb = _object_cache_path/intermediate_file(src, ".pdb");
+    append_arguments(args,{"/nologo","/ifcSearchDir","{}","/Fd{}","/c"}, {path_arg(_module_cache_path), path_arg(pdb)});
     for (const auto &r : modules) {
         switch (r.type) {
             case ModuleType::system_header:
@@ -412,8 +471,9 @@ int CompilerMSVC::invoke(const std::filesystem::path &workdir,
     Process p = Process::spawn(_config.program_path, workdir, arguments, Process::output, _env_cache.env);
     std::string dummy(std::istreambuf_iterator<char>(*p.stdout_stream), std::istreambuf_iterator<char>());
     int r =  p.waitpid_status();
-    if (r) {
-        std::cerr << dummy << std::endl;
+    int lines =std::accumulate(dummy.begin(), dummy.end(), 0, [](int a, char c){return a+(c == '\n'?1:0);});
+    if (lines > 1) {    //attempt to remove filename from output
+        Log::verbose("{}", dummy);   //any larger output is displayed
     }
     return r;
 
@@ -464,9 +524,6 @@ constexpr std::string_view all_compilers_macros[] = {
     "_CPPUNWIND",
     "_DEBUG",
     "_DLL",
-    "__FUNCDNAME__",
-    "__FUNCSIG__",
-    "__FUNCTION__",
     "_INTEGRAL_MAX_BITS",
     "__INTELLISENSE__",
     "_ISO_VOLATILE",
@@ -586,9 +643,96 @@ constexpr std::string_view all_compilers_macros[] = {
  };
 
 void CompilerMSVC::create_macro_summary_file(const std::filesystem::path &target) {
+    if (std::filesystem::exists(target)) return;
     std::ofstream out(target, std::ios::out|std::ios::trunc);
     for (auto &x: all_compilers_macros) {
-        out << "#ifdef " << x << "\n" << "\"" << x << "\" {" << x << "}\n#endif\n";
+        out << "#ifdef " << x << "\n" << x << "_m:" << x << "\n#endif\n";
     }
 }
 
+void CompilerMSVC::initialize_preproc() {
+    auto sumfile = _config.working_directory/"macros.txt";
+    create_macro_summary_file(sumfile);
+    auto args = _config.compile_options;
+    append_arguments(args, {"/nologo", "/EP", "/TP", "{}"}, {path_arg(sumfile)});
+    auto proc = Process::spawn(_config.program_path, _config.working_directory, args, Process::output_error, _env_cache.env);
+    auto &input = *proc.stdout_stream;
+    std::string ln;
+    while (!input.eof()) {
+        std::getline(input, ln);
+        while (!ln.empty() && std::isspace(ln.back())) ln.pop_back();
+        if (ln.empty()) continue;
+        auto sep = ln.find("_m:");
+        if (sep == ln.npos) continue;
+        auto name = ln.substr(0, sep);
+        auto value = ln.substr(sep+3);
+        _preproc.define_symbol(name, value);
+    }
+
+    auto r = _env_cache.env["INCLUDE"];
+    std::vector<std::filesystem::path> includes;
+    std::basic_string_view lst(r);
+    while (!lst.empty()) {
+        auto sep = lst.find(';');
+        if (sep == lst.npos) {
+            includes.push_back(std::filesystem::path(lst));
+            lst = {};
+        } else {
+            includes.push_back(std::filesystem::path(lst.substr(0,sep)));
+            lst = lst.substr(sep+1);
+        }
+    }
+    _preproc.append_includes(includes);
+}
+
+std::string CompilerMSVC::run_preproc(std::span<const ArgumentString> args, std::filesystem::path workdir, std::filesystem::path file) const {
+    auto preproc = _preproc;
+    int stg = 0;
+    for (ArgumentStringView x: args) {
+        if (x == preproc_D) {stg = 'd';continue;}
+        if (x == preproc_I) {stg = 'i';continue;}
+        if (x == preproc_U) {stg = 'u';continue;}
+        if (stg == 0) {
+            if (x.substr(0,preproc_D.size()) == preproc_D) {stg = 'd'; x = x.substr(0,preproc_D.size());}
+            if (x.substr(0,preproc_I.size()) == preproc_I) {stg = 'i'; x = x.substr(0,preproc_I.size());}
+            if (x.substr(0,preproc_U.size()) == preproc_U) {stg = 'u'; x = x.substr(0,preproc_U.size());}
+        }
+        switch (stg) {
+            case 'd':  {//define
+                ArgumentStringView key;
+                ArgumentStringView value;
+                auto sep = x.find('=');
+                if (sep == x.npos) {
+                    key = x;
+                    value = preproc_1;
+                } else {
+                    key = x.substr(0,sep);
+                    value = x.substr(sep+1);
+                }
+                std::string key_u;
+                std::string value_u;
+                to_utf8(key.begin(), key.end(), std::back_inserter(key_u));
+                to_utf8(value.begin(), value.end(), std::back_inserter(value_u));
+                preproc.define_symbol(key_u, value_u);
+                break;
+            }
+            case 'i': {//include
+                std::filesystem::path p = (workdir/x).lexically_normal();
+                preproc.append_includes(std::move(p));
+                break;
+            }
+            case 'u': {//undef
+                std::string key_u;
+                to_utf8(x.begin(), x.end(), std::back_inserter(key_u));
+                preproc.undef_symbol(key_u);
+                break;
+            }
+        }
+    }
+    return preproc.run(workdir, file);
+
+}
+
+std::string CompilerMSVC::preproc_for_test(const std::filesystem::path &file) const {
+    return run_preproc(_config.compile_options, std::filesystem::current_path(), file);
+}

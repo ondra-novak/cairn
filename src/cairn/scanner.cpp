@@ -240,7 +240,7 @@ SourceScanner::Info SourceScanner::scan_string_2(const std::string_view text) {
     auto tkn = simple_tokenizer(text);
     bool cont;
 
-    bool has_export = false;
+    bool has_export = false;        
 
     do {
         cont = true;      
@@ -297,15 +297,16 @@ SourceScanner::Info SourceScanner::scan_string_2(const std::string_view text) {
                 if (s.type == TokenType::keyword) {
                     auto n = handle_partition(nfo.name, s.text);
                     nfo.required.push_back({is_paritition(n)?ModuleType::partition:ModuleType::interface, std::move(n)});
-                    if (has_export) {
-                        nfo.exported.push_back(nfo.required.back());
-                        has_export = false;  
-                    }                 
                 } else if (s.type == TokenType::string) {
                     nfo.required.push_back({ModuleType::user_header, std::string(s.text)});
                 } else  if (s.type == TokenType::angled_include) {
                     nfo.required.push_back({ModuleType::system_header, std::string(s.text)});
                 }                
+                if (has_export) {
+                    nfo.exported.push_back(nfo.required.back());                
+                }                 
+            } else if (s.type == TokenType::keyword) {
+                return nfo ; //anything else - exit now, import section ended
             }
         }
         has_export = false;

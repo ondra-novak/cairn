@@ -1,3 +1,8 @@
+#ifdef _MSC_VER
+module;
+#include <filesystem> //msvc requires
+#endif 
+
 export module cairn.abstract_compiler;
 
 import cairn.module_type;
@@ -166,6 +171,11 @@ public:
     void dry_run(bool enabled) {
             _disable_build = enabled;
     }
+
+    virtual std::string preproc_for_test(const std::filesystem::path &file) const = 0;
+
+    ///compiler requires to include header transitive (MSVC)
+    virtual bool transitive_headers() const {return false;}
 
 
 protected:
