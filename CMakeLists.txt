@@ -44,7 +44,16 @@ add_custom_target(cairn ALL
         -j0 -B${CMAKE_BINARY_DIR}
         -c${CMAKE_BINARY_DIR}/compile_commands.json 
         -f cairn.yaml
-#        ${CMAKE_CXX_COMPILER} ${COMPILE_FLAGS} ${FLAGS_RELEASE}
-    ${CMAKE_CXX_COMPILER} ${COMPILE_FLAGS} /Od /Zi 
+        ${CMAKE_CXX_COMPILER} ${COMPILE_FLAGS} ${FLAGS_RELEASE}
+#       ${CMAKE_CXX_COMPILER} ${COMPILE_FLAGS} /Od /Zi 
+    WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+    COMMAND_EXPAND_LISTS   )
+
+add_custom_target(gen_makefile 
+    COMMAND ${CMAKE_CURRENT_LIST_DIR}/.install/cairn 
+        -B.install
+        -Mcompile.mk
+        .install/cairn=src/cairn/main.cpp        
+        clang++ ${COMPILE_FLAGS} ${FLAGS_RELEASE}
     WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
     COMMAND_EXPAND_LISTS   )

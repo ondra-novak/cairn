@@ -11,6 +11,7 @@ import <filesystem>;
 import <string>;
 import <string_view>;
 import <span>;
+import <vector>;
 
 /*
 static void output_cmd_line(const std::filesystem::path &base_dir,
@@ -120,13 +121,15 @@ export void generate_makefile(const BuildPlan<ModuleDatabase::CompileAction> &pl
     ArgumentString srchpath = path_arg(cur_dir);
 
     if (plan.begin() != plan.end()) {
+        std::string compiler_fname;
         plan.begin()->action.generate_compile_commands([&](const std::filesystem::path &,
                                           const std::filesystem::path &,
                                           const std::filesystem::path &,
                                           const std::filesystem::path &compiler,
                                           std::vector<ArgumentString> &&) {
-            mk << "CXX ?= " << compiler.filename().string() << "\n\n";
+            compiler_fname = compiler.filename().string();
         });
+        mk << "CLANG ?= " << compiler_fname << "\n\n";
         
 
     }
@@ -145,7 +148,7 @@ export void generate_makefile(const BuildPlan<ModuleDatabase::CompileAction> &pl
                                           std::vector<ArgumentString> &&arguments) {
             auto relpath = path_arg(std::filesystem::relative(directory/"~", cur_dir).parent_path());
             auto relpath_back = path_arg(std::filesystem::relative(cur_dir/"~", directory).parent_path());
-            mk << "\tcd " << escape_arg_bash(relpath) << "; ${CXX} ";
+            mk << "\tcd " << escape_arg_bash(relpath) << "; ${CLANG} ";
             for (auto &a: arguments) mk << " " <<  escape_arg_bash(splice_string(a, srchpath, relpath_back));
             mk << "\n";
             workdirs.insert(output.parent_path());
@@ -171,8 +174,8 @@ export void generate_batch(const BuildPlan<ModuleDatabase::CompileAction> &plan,
                                           const std::filesystem::path &,
                                           const std::filesystem::path &compiler,
                                           std::vector<ArgumentString> &&) {
-            out << "SET CXX=" << escape_arg_bat(path_arg(compiler.filename())) << "\n"
-                  "IF NOT \"%1\" == \"\"  SET CXX=%1\n";
+            out << "SET CLANG=" << escape_arg_bat(path_arg(compiler.filename())) << "\n"
+                  "IF NOT \"%1\" == \"\"  SET CLANG=%1\n";
             
         });
 
@@ -197,7 +200,7 @@ export void generate_batch(const BuildPlan<ModuleDatabase::CompileAction> &plan,
                                           std::vector<ArgumentString> &&arguments) {
             auto relpath = path_arg(std::filesystem::relative(directory/"~", cur_dir).parent_path());
             auto relpath_back = path_arg(std::filesystem::relative(cur_dir/"~", directory).parent_path());
-            out << "pushd " << escape_arg_bat(relpath) << "\n%CXX%";
+            out << "pushd " << escape_arg_bat(relpath) << "\n%CLANG%";
             for (auto &a: arguments) out << " " <<  escape_arg_bat(splice_string(a, srchpath, relpath_back));
             out <<"\n"                                        
                 "popd\n";

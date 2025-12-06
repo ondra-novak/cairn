@@ -1,6 +1,7 @@
 export module cairn.utils.function_view;
 
 import <type_traits>;
+import <utility>;
 
 
 template<typename Fn, bool nx, typename R, typename ... Args>
