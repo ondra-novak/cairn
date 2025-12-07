@@ -7,7 +7,7 @@ This tool performs the following steps:
 2. **Scanning** – inspects all discovered files and generates metadata for them, determining their type and dependencies.
 3. **Planning** – creates a build plan.
 4. **Build execution** – invokes the compiler and compiles all modules in the correct order, ensuring proper references to imports.
-5. **Automatic BMI generation** – automatically builds BMI for header modules.
+5. **Header modules** – automatically builds BMI for referenced header modules.
 
 # Installation
 
@@ -59,10 +59,10 @@ The `modules.yaml` file should be created in the folder containing your module f
 - **includes** - adds paths to the include list.
 - **options** - adds compiler flags.
 
-## překlad
+## Building
 
 ```
-cairn <flagy> target=pathname.cpp compiler <compiler flags>
+cairn <flags> target=pathname.cpp compiler <compiler flags>
 ```
 
 Example:
